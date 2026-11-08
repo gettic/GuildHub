@@ -31,6 +31,7 @@ Open them with `/ghub options` or in Options > AddOns > Guild Hub. The Guild Mas
 
 - Trial and Veteran trial accounts can receive data but not send it.
 - Data of members not seen for 90 days is deleted.
+- Works with WoW Forever character names such as "Mira Ashford".
 
 ## For people who change the code
 

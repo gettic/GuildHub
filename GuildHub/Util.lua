@@ -36,10 +36,29 @@ function U.ShortName(full)
 	return (strmatch(full, "^([^%-]+)")) or full
 end
 
--- A player name we accept from a message: letters (incl. accented), a dash and realm, no pipes/spaces.
+-- Name to whisper: our own realm is dropped ("Mira Ashford-Realm" -> "Mira Ashford"), because
+-- WoW Forever names ("Name Suffix", with a space) don't work with "-Realm". Other realms stay.
+function U.WhisperName(key)
+	if type(key) ~= "string" then return key end
+	local realm = U.MyRealm()
+	if realm then
+		local suffix = "-" .. realm
+		if #key > #suffix and strsub(key, -#suffix) == suffix then
+			return strsub(key, 1, #key - #suffix)
+		end
+	end
+	return key
+end
+
+-- A player name we accept from a message, always "Name-Realm" (see FullName).
+-- WoW Forever names have one space inside ("Mira Ashford"), so single inner spaces are allowed;
+-- no pipes, control characters, other whitespace, double/leading/trailing spaces.
 function U.ValidName(name)
-	if type(name) ~= "string" or #name < 2 or #name > 64 then return nil end
-	if strfind(name, "[%s|%c]") then return nil end
+	if type(name) ~= "string" or issecret(name) or #name < 2 or #name > 64 then return nil end
+	if strfind(name, "[|%c]") then return nil end
+	if strfind(name, "[^ %S]") then return nil end -- whitespace other than a plain space
+	if strfind(name, "  ", 1, true) or strfind(name, "^ ") or strfind(name, " $") then return nil end
+	if strfind(name, " -", 1, true) or strfind(name, "- ", 1, true) then return nil end
 	if not strfind(name, "-", 1, true) then return nil end
 	return name
 end

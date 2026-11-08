@@ -95,7 +95,8 @@ function GH:SendMsg(mtype, data, target, prio)
 	self.lastSent[key] = GetTime()
 	self:Debug("> %s to %s (%d chars, %d pieces)", mtype, target and U.ShortName(target) or "guild",
 		#text, math.ceil(#text / 254))
-	self:SendCommMessage(self.PREFIX, text, channel, target, prio or "NORMAL", self.OnSendResult,
+	-- whisper to "Mira Ashford", not "Mira Ashford-Realm" (WoW Forever names); info keeps the key
+	self:SendCommMessage(self.PREFIX, text, channel, target and U.WhisperName(target), prio or "NORMAL", self.OnSendResult,
 		{ mtype = mtype, target = target })
 end
 
@@ -152,17 +153,38 @@ end
 ------------------------------------------------------------------------
 function GH:OnCommReceived(prefix, text, distribution, sender)
 	if prefix ~= self.PREFIX then return end
-	if U.IsSecret(text) or U.IsSecret(sender) or U.IsSecret(distribution) then return end
-	if type(text) ~= "string" or type(sender) ~= "string" then return end
-	if #text > MAX_INCOMING then return end
-	if distribution ~= "GUILD" and distribution ~= "WHISPER" then return end
+	if U.IsSecret(text) or U.IsSecret(sender) or U.IsSecret(distribution) then
+		self:Debug("ignored a message (hidden by the game)")
+		return
+	end
+	if type(text) ~= "string" or type(sender) ~= "string" then
+		self:Debug("ignored a message (bad data)")
+		return
+	end
+	-- names from outside are cleaned before they are printed
+	local shown = U.CleanText(sender, 40) or "?"
+	if #text > MAX_INCOMING then
+		self:Debug("ignored a message from %s (too big: %d chars)", shown, #text)
+		return
+	end
+	if distribution ~= "GUILD" and distribution ~= "WHISPER" then
+		self:Debug("ignored a message from %s (channel %s)", shown, U.CleanText(tostring(distribution), 20) or "?")
+		return
+	end
 
-	sender = U.ValidName(U.FullName(sender))
-	if not sender then return end
+	local full = U.ValidName(U.FullName(sender))
+	if not full then
+		self:Debug("ignored a message: bad sender name '%s'", shown)
+		return
+	end
+	sender = full
 
 	local proto, mtype, body = text:match("^(%d+)\t(%u+)\t(.*)$")
 	proto = tonumber(proto)
-	if not proto then return end
+	if not proto then
+		self:Debug("ignored a message from %s (unreadable format)", U.ShortName(sender))
+		return
+	end
 
 	local isSelf = sender == self:MyName()
 	if not isSelf then

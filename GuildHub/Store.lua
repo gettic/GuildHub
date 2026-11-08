@@ -120,6 +120,32 @@ function GH:UpdateSelf()
 	return m
 end
 
+-- v0.1.0 stored our own record under "UnitName-Realm" ("Mira-Realm" on WoW Forever, where the
+-- real name is "Mira Ashford"). Move it to the right key; nothing is thrown away: if both exist,
+-- the newer one wins and empty fields are filled from the other.
+function GH:MigrateOwnKey()
+	local gdb = self:GetGuildDB()
+	local me = self:MyName()
+	local old = U.FullName(UnitName("player"))
+	if not gdb or not me or not old or old == me then return end
+	local oldRec = gdb.members[old]
+	if type(oldRec) ~= "table" then return end
+	local cur = gdb.members[me]
+	if type(cur) ~= "table" then
+		gdb.members[me] = oldRec
+	else
+		local main, other = cur, oldRec
+		if (oldRec.ts or 0) > (cur.ts or 0) then main, other = oldRec, cur end
+		for k, v in pairs(other) do
+			if main[k] == nil then main[k] = v end
+		end
+		if (other.lastSeen or 0) > (main.lastSeen or 0) then main.lastSeen = other.lastSeen end
+		gdb.members[me] = main
+	end
+	gdb.members[old] = nil
+	self:Debug("moved your saved record from %s to %s", old, me)
+end
+
 function GH:TouchMember(name)
 	local gdb = self:GetGuildDB()
 	local m = gdb and gdb.members[name]

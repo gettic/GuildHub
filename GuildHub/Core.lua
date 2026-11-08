@@ -29,9 +29,15 @@ function GH:Debug(text, ...)
 	DEFAULT_CHAT_FRAME:AddMessage(L.DEBUG_PREFIX .. text)
 end
 
+-- Our key, the same form others see us as: "Name-Realm". On WoW Forever, UnitName gives only
+-- "Mira" while the game (chat, guild list) uses "Mira Ashford", which GetUnitName(.., true) returns.
 function GH:MyName()
 	if not self.myName then
-		self.myName = U.FullName(UnitName("player"))
+		local name = GetUnitName and GetUnitName("player", true)
+		if type(name) ~= "string" or U.IsSecret(name) or name == "" then
+			name = UnitName("player")
+		end
+		self.myName = U.FullName(name)
 	end
 	return self.myName
 end
@@ -66,6 +72,7 @@ function GH:Startup()
 	if self.started then return end
 	self.started = true
 
+	self:MigrateOwnKey()  -- Store.lua
 	self:RequestRoster()
 	self:Prune()
 	self:ScheduleRepeatingTimer("RequestRoster", self.ROSTER_SECONDS)
