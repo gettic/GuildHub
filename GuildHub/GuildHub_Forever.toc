@@ -1,0 +1,20 @@
+## Interface: 16001
+## Title: Guild Hub
+## Notes: See what your guildmates are doing, where they are and what they can craft.
+## Author: gettic
+## Version: 0.1.0
+## AllowLoadGameType: forever
+## SavedVariables: GuildHubDB
+## IconTexture: Interface\Icons\INV_Misc_GroupNeedMore
+## Category: Social
+
+Libs\embeds.xml
+
+Locale.lua
+Util.lua
+Core.lua
+Store.lua
+Roster.lua
+Comm.lua
+Sync.lua
+Options.lua
