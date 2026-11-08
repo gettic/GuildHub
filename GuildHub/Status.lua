@@ -577,6 +577,7 @@ function GH:BuildStatusRows(opts)
 				row.status = self:StatusLine(s, fresh, row.muted)
 				row.preset = fresh and s.p or nil
 				row.act = s.a
+				if fresh and s.st then row.left = math.max(0, self:StatusDuration(s) - (now - s.st)) end
 				if fresh and s.st then row.since = now - s.st
 				elseif s.a and s.as then row.since = now - s.as end
 			else

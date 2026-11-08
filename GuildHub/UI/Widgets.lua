@@ -53,6 +53,16 @@ function W.Button(parent, text, width, height, font)
 	return b
 end
 
+-- Simple hover tooltip (keeps any OnEnter/OnLeave already set).
+function W.Tooltip(frame, text)
+	frame:HookScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+		GameTooltip:AddLine(text, 1, 1, 1, true)
+		GameTooltip:Show()
+	end)
+	frame:HookScript("OnLeave", function() GameTooltip:Hide() end)
+end
+
 -- Text box (never takes focus by itself). hint = grey text shown while empty.
 function W.EditBox(parent, width, height, maxLetters, hint)
 	local e = CreateFrame("EditBox", nil, parent, "BackdropTemplate")

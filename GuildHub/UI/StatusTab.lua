@@ -9,8 +9,9 @@ local LIST_W = 722
 local SORTS = { "activity", "level", "zone", "rank", "name" }
 -- column x positions and widths inside a row
 local COL = {
-	name = { 8, 116 }, rank = { 128, 86 }, lvl = { 218, 30 }, zone = { 252, 120 }, status = { 376, 176 },
-	time = { 556, 56 }, whisper = { 616, 58 }, invite = { 678, 44 },
+	-- status 140 px with the time right after it ("for 1 h 10 min" needs ~90 px); actions stay at the right
+	name = { 8, 116 }, rank = { 128, 86 }, lvl = { 218, 30 }, zone = { 252, 120 }, status = { 376, 140 },
+	time = { 520, 92 }, whisper = { 616, 58 }, invite = { 678, 44 },
 }
 GH.STATUS_COLUMNS, GH.STATUS_LIST_W = COL, LIST_W -- for the offline test
 
@@ -115,6 +116,13 @@ local function MakeRow(parent)
 		elseif d.status ~= "" then
 			GameTooltip:AddLine(d.status, 1, 0.9, 0.6, true) -- cleaned text (no codes)
 		end
+		if not d.noAddon and d.since then
+			if d.left then
+				GameTooltip:AddLine(L.TIP_FOR_CLEARS:format(U.Duration(d.since), U.Duration(d.left)), 0.7, 0.7, 0.7)
+			else
+				GameTooltip:AddLine(L.FOR_FMT:format(U.Duration(d.since)), 0.7, 0.7, 0.7)
+			end
+		end
 		GameTooltip:Show()
 	end)
 	r:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -153,7 +161,7 @@ local function FillRow(r, d)
 	r.zone:SetText(d.zone)
 	r.zone:SetTextColor(grey * 0.85, grey * 0.8, grey * 0.65)
 	r.status:SetText(d.status) -- cleaned text from others, never contains | codes
-	r.time:SetText(d.since and U.Duration(d.since) or "")
+	r.time:SetText(d.since and L.FOR_FMT:format(U.Duration(d.since)) or "")
 end
 
 function GH:BuildStatusTab(parent)
@@ -166,17 +174,26 @@ function GH:BuildStatusTab(parent)
 	local search = W.EditBox(parent, 330, 24, 40, L.SEARCH_HINT)
 	search:SetPoint("TOPLEFT", 8, -6)
 	search:SetScript("OnEnterPressed", function(s) s:ClearFocus() end)
+	search:SetScript("OnEscapePressed", function(s) -- Esc empties the search and shows everyone again
+		s:SetText("")
+		s:ClearFocus()
+		tab.offset = 0
+		GH:DrawStatusTab()
+	end)
 	search:HookScript("OnTextChanged", function() tab.offset = 0; GH:DrawStatusTab() end)
 	tab.search = search
 
 	local sort = W.Button(parent, "", 130, 24)
 	sort:SetPoint("LEFT", search, "RIGHT", 10, 0)
-	sort:SetScript("OnClick", function()
+	sort:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+	sort:SetScript("OnClick", function(_, button)
 		local i = 1
 		for k, v in ipairs(SORTS) do if v == db.sort then i = k end end
-		db.sort = SORTS[i % #SORTS + 1]
+		local step = button == "RightButton" and -1 or 1
+		db.sort = SORTS[(i - 1 + step) % #SORTS + 1]
 		GH:DrawStatusTab()
 	end)
+	W.Tooltip(sort, L.SORT_TIP)
 	tab.sort = sort
 
 	local compact = W.Button(parent, L.COMPACT, 140, 24)
@@ -186,6 +203,7 @@ function GH:BuildStatusTab(parent)
 		tab.offset = 0
 		GH:DrawStatusTab()
 	end)
+	W.Tooltip(compact, L.COMPACT_TIP)
 	tab.compact = compact
 
 	-- column titles
@@ -289,6 +307,7 @@ function GH:BuildOwnPanel(parent)
 		local col, row = (i - 1) % 2, math.floor((i - 1) / 2)
 		b:SetPoint("TOPLEFT", 12 + col * 104, -40 - row * 26)
 		b:SetScript("OnClick", function()
+			if GH.dungeonPicker then GH.dungeonPicker:Hide() end
 			tab.note:ClearFocus()
 			GH:SetPreset(p)
 			GH:UpdateOwnPanel(true) -- the note box follows (cleared when switching presets)
@@ -298,7 +317,14 @@ function GH:BuildOwnPanel(parent)
 
 	local dung = W.Button(panel, "", 206, 22)
 	dung:SetPoint("TOPLEFT", 12, -124)
-	dung:SetScript("OnClick", function() GH:ToggleDungeonPicker(dung) end)
+	dung:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+	dung:SetScript("OnClick", function(_, button)
+		if button == "RightButton" then
+			if GH.dungeonPicker then GH.dungeonPicker:Hide() end
+		else
+			GH:ToggleDungeonPicker(dung)
+		end
+	end)
 	tab.dungeon = dung
 
 	local note = W.EditBox(panel, 206, 24, self.NOTE_LETTERS, L.NOTE_HINT)
@@ -306,19 +332,26 @@ function GH:BuildOwnPanel(parent)
 	note:SetScript("OnEnterPressed", function(s)
 		GH:SetStatusText(s:GetText())
 		s:ClearFocus()
+		GH:UpdateOwnPanel(true) -- the box now shows the shared (cleaned) note; hint goes away
 	end)
 	note:SetScript("OnEscapePressed", function(s)
 		s:ClearFocus()
 		GH:UpdateOwnPanel(true)
 	end)
+	-- nothing is shared when the box loses focus: only Enter shares (the hint says so)
+	note:HookScript("OnTextChanged", function() GH:UpdateNoteHint() end)
 	tab.note = note
 
+	tab.noteHint = W.Text(panel, "GameFontNormalSmall", L.NOTE_UNSENT)
+	tab.noteHint:SetPoint("TOPLEFT", 14, -179)
+	tab.noteHint:Hide()
+
 	tab.clearsIn = W.Text(panel, "GameFontDisableSmall")
-	tab.clearsIn:SetPoint("TOPLEFT", 14, -186)
+	tab.clearsIn:SetPoint("TOPLEFT", 14, -194)
 	tab.clearsIn:SetWidth(204)
 
 	local lasts = W.Button(panel, "", 100, 20)
-	lasts:SetPoint("TOPLEFT", 12, -204)
+	lasts:SetPoint("TOPLEFT", 12, -212)
 	lasts:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 	lasts:SetScript("OnClick", function(_, button)
 		GH:CycleStatusHours(button == "RightButton" and -1 or 1)
@@ -333,7 +366,7 @@ function GH:BuildOwnPanel(parent)
 	tab.lasts = lasts
 
 	local clear = W.Button(panel, L.BTN_CLEAR, 60, 20)
-	clear:SetPoint("TOPRIGHT", panel, "TOPLEFT", 216, -204)
+	clear:SetPoint("TOPRIGHT", panel, "TOPLEFT", 216, -212)
 	clear:SetScript("OnClick", function()
 		tab.note:SetText("")
 		GH:ClearStatus()
@@ -342,7 +375,7 @@ function GH:BuildOwnPanel(parent)
 	tab.clear = clear
 
 	tab.autoAct = W.Text(panel, "GameFontHighlightSmall")
-	tab.autoAct:SetPoint("TOPLEFT", 14, -236)
+	tab.autoAct:SetPoint("TOPLEFT", 14, -244)
 	tab.autoAct:SetWidth(206)
 end
 
@@ -365,12 +398,16 @@ function GH:ToggleDungeonPicker(anchor)
 			b.label:SetPoint("LEFT", 6, 0)
 			local col, row = math.floor(i / perCol), i % perCol
 			b:SetPoint("TOPLEFT", 6 + col * 196, -6 - row * 18)
-			b:SetScript("OnClick", function()
+			b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+			b:SetScript("OnClick", function(_, button)
+				if button == "RightButton" then pick:Hide() return end -- right-click closes the list
 				GH:SetLfgDungeon(i)
 				GH:UpdateOwnPanel()
 				pick:Hide()
 			end)
 		end
+		pick:EnableMouse(true)
+		pick:SetScript("OnMouseUp", function(_, button) if button == "RightButton" then pick:Hide() end end)
 		pick:Hide() -- new frames start shown; without this the first click only "closed" it
 		self.dungeonPicker = pick
 	end
@@ -390,9 +427,14 @@ function GH:UpdateOwnPanel(resetNote)
 	tab.dungeon:SetShown(lfg)
 	if lfg then tab.dungeon:SetLabel(L.DUNGEON_FMT:format(self:DungeonName(own.d))) end
 	if not lfg and self.dungeonPicker then self.dungeonPicker:Hide() end
-	if resetNote or not tab.note:HasFocus() then
-		tab.note:SetText(fresh and own.t or "")
+	-- Refresh the box only if the player hasn't typed something unsent into it (the regular redraws
+	-- must never wipe typing; the "Press Enter to share" hint covers that case).
+	local typed = tab.note:GetText()
+	if resetNote or (not tab.note:HasFocus() and typed == (tab.noteShown or "")) then
+		tab.noteShown = fresh and own.t or ""
+		tab.note:SetText(tab.noteShown)
 	end
+	self:UpdateNoteHint()
 	tab.lasts:SetLabel(L.LASTS_FMT:format(self:OwnHours()))
 	tab.lasts:SetEnabled(fresh) -- nothing to apply it to without a status
 	tab.lasts:SetAlpha(fresh and 1 or 0.45)
@@ -407,6 +449,16 @@ function GH:UpdateOwnPanel(resetNote)
 	else
 		tab.autoAct:SetText(L.AUTO_ACT_FMT:format(own.a and L.ACT[own.a] or L.AUTO_ACT_NONE))
 	end
+end
+
+-- "Press Enter to share" while the note box holds text that isn't shared yet.
+function GH:UpdateNoteHint()
+	local tab = self.statusTab
+	if not tab or not tab.noteHint then return end
+	local own = self:GetOwnStatus() or {}
+	local shared = self:IsStatusFresh(own) and own.t or nil
+	local typed = U.CleanText(tab.note:GetText(), 80)
+	tab.noteHint:SetShown(typed ~= shared)
 end
 
 ------------------------------------------------------------------------

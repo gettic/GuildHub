@@ -131,8 +131,16 @@ function GH:InitMinimapButton()
 	b:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_LEFT")
 		GameTooltip:AddLine(L.WIN_TITLE)
-		local _, online, withAddon = GH:BuildStatusRows({ showNoAddon = true })
+		local rows, online, withAddon = GH:BuildStatusRows({ showNoAddon = true, sort = "name" })
 		GameTooltip:AddLine(L.FOOTER:format(online, withAddon), 1, 1, 1)
+		local lfg, help = 0, 0
+		for _, r in ipairs(rows) do
+			if r.isSelf then -- only guildmates
+			elseif r.preset == "lfg" then lfg = lfg + 1 elseif r.preset == "help" then help = help + 1 end
+		end
+		if lfg + help > 0 then
+			GameTooltip:AddLine(L.MM_TIP_LFG:format(lfg) .. " · " .. (help == 1 and L.MM_TIP_HELP1 or L.MM_TIP_HELPN):format(help), 1, 0.85, 0.5)
+		end
 		GameTooltip:AddLine(L.MM_TIP_CLICK, 0.7, 0.7, 0.7)
 		GameTooltip:Show()
 	end)

@@ -14,15 +14,15 @@ Planned next: professions and a guild map. They are not built yet.
 
 ## Status board
 
-Type `/ghub` or click the Guild Hub minimap button to open it. It lists every online guildmate with rank, level, zone, what they are doing and for how long. Each row has Whisper and Invite buttons. You can sort (activity, level, zone, rank, name) and search by name, zone, status or rank. Guildmates without Guild Hub show greyed out.
+Type `/ghub` or click the Guild Hub minimap button to open it. It lists every online guildmate with rank, level, zone, what they are doing and for how long (for example "for 12 min"). Hover a row to see how long the status has lasted and when it clears, such as "for 45 min · clears in 15 min". Each row has Whisper and Invite buttons. Left-click the Sort button to go to the next sort (activity, level, zone, rank, name) and right-click to go back. Search by name, zone, status or rank; press Esc in the search box to clear it. Guildmates without Guild Hub show greyed out.
 
-**Your status.** Pick LFG (then choose a dungeon), Need help, Farming, Leveling, Busy or Open to chat. You can add a short note of up to 60 letters. A new status lasts 1 hour. The "Lasts" button changes that to 1, 2, 4 or 8 hours: left-click for longer, right-click for shorter. Changing the note or the dungeon keeps the time. Choosing another status, or turning it off, clears the old note.
+**Your status.** Pick LFG (then choose a dungeon), Need help, Farming, Leveling, Busy or Open to chat. You can add a short note of up to 60 letters. A new status lasts 1 hour. The "Lasts" button changes that to 1, 2, 4 or 8 hours: left-click for longer, right-click for shorter. Changing the note or the dungeon keeps the time. Choosing another status, or turning it off, clears the old note. Nothing is shared until you press Enter in the note box. "Press Enter to share" shows while your typed note is not shared yet. In the dungeon list, right-click closes it.
 
 **Automatic activity.** Guild Hub also shares what you are doing (in a dungeon, gathering, AFK, in town, at an inn...). To share only the status you pick yourself, turn off "Share my activity automatically" in the settings.
 
 **Notes.** A small note, with no sound, appears when a guildmate within 5 levels of you starts LFG, or when someone asks for help. You get at most one per player every 5 minutes. Use "Mute" on a note to stop a player's notes (this also hides their status text). Unmute them, or switch the notes off, in the settings.
 
-**Minimap button.** Left-click opens the window. Right-click opens the settings. Drag to move it. You can hide it in the settings.
+**Minimap button.** Left-click opens the window. Right-click opens the settings. Drag to move it. Hover it to see how many guildmates are looking for a group or need help. You can hide it in the settings.
 
 If the game blocks the Invite button, Guild Hub puts `/invite Name` in your chat box. Press Enter to send it.
 
@@ -74,4 +74,4 @@ The addon lives in `GuildHub\`. Files are loaded in this order (see `GuildHub_Fo
 
 ## Credits
 
-Uses the embedded libraries Ace3 (BSD-style licence, see `GuildHub\Libs\Ace3-LICENSE.txt`) and HereBeDragons (not used until the map is built).
+Uses the embedded libraries Ace3 (BSD-style licence, see `GuildHub\Libs\Ace3-LICENSE.txt`) and HereBeDragons (not used until the map is built). They keep their own licences. Guild Hub itself is all rights reserved: you may download it and use it to play, but not copy, change or redistribute it (see `LICENSE`).
