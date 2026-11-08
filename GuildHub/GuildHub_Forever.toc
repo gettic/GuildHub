@@ -2,7 +2,7 @@
 ## Title: Guild Hub
 ## Notes: See what your guildmates are doing, where they are and what they can craft.
 ## Author: gettic
-## Version: 0.1.1
+## Version: 0.1.2
 ## AllowLoadGameType: forever
 ## SavedVariables: GuildHubDB
 ## IconTexture: Interface\Icons\INV_Misc_GroupNeedMore

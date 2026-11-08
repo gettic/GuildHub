@@ -265,8 +265,11 @@ function GH:BuildStatusTab(parent)
 	tab.footer = W.Text(parent, "GameFontDisableSmall")
 	tab.footer:SetPoint("BOTTOMLEFT", 8, 8)
 	local fr = W.Text(parent, "GameFontDisableSmall", L.FOOTER_RIGHT, "RIGHT")
-	fr:SetPoint("BOTTOMLEFT", LIST_W - 200, 8)
-	fr:SetWidth(208)
+	-- right-aligned to the list's right edge, 400 px wide (the text needs ~230 px; the left footer
+	-- "N online · M with Guild Hub" ends well before x 330, so they never overlap)
+	fr:SetPoint("BOTTOMRIGHT", parent, "BOTTOMLEFT", 8 + LIST_W, 8)
+	fr:SetWidth(400)
+	tab.footerRight = fr
 
 	-- while the window is open: times and "Clears in" every 10 s, a fresh guild list every 15 s
 	-- (zones, levels, who is online). OnUpdate only runs while the window is shown.
