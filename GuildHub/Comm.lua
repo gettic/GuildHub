@@ -17,11 +17,12 @@ local MIN_INTERVAL = {
 	HB      = 60,
 	CFG     = 10,
 	TEST    = 10,
+	STATUS  = 10,
 	SYNCING = 0,
 	SYNC    = 0,
 }
 -- Kept and sent later when a boss fight / PvP match blocks messages.
-local KEEP_IN_LOCKDOWN = { HELLO = true, HB = true, CFG = true }
+local KEEP_IN_LOCKDOWN = { HELLO = true, HB = true, CFG = true, STATUS = true }
 
 local MAX_INCOMING = 30000 -- characters; anything bigger is dropped
 
@@ -224,7 +225,7 @@ function GH:OnCommReceived(prefix, text, distribution, sender)
 
 	local okCall, err = pcall(handler, self, sender, data, distribution, isSelf)
 	if not okCall then
-		self:Debug("|cffff6060error handling %s: %s|r", mtype, tostring(err))
+		self:Debug("|cffff6060error handling %s: %s|r", mtype, U.CleanText(tostring(err), 200) or "?")
 	end
 end
 
@@ -269,6 +270,7 @@ function GH:ReadSelfInfo(sender, data)
 		ts = data.ts, class = data.class, level = data.level, version = data.v, lastSeen = U.Now(),
 	})
 	if rec then self:MergeMember(sender, rec) end
+	self:RefreshBoard()
 end
 
 ------------------------------------------------------------------------
@@ -279,6 +281,8 @@ function GH:SendHeartbeat()
 	local gdb = self:GetGuildDB()
 	if gdb then gdb.lastOnline = U.Now() end
 	self:SendMsg("HB", self:SelfInfo())
+	-- refresh for players who missed a change (e.g. they were in a dungeon); only if there is something
+	if self:HasStatusToShare() then self:SendStatus() end
 end
 
 GH.handlers.HB = function(self, sender, data, _, isSelf)

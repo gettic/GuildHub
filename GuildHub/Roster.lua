@@ -34,11 +34,12 @@ function GH:RebuildRoster()
 	local now = U.Now()
 	local gdb = self:GetGuildDB()
 	for i = 1, num do
-		local name, _, rankIndex, level, _, zone, _, _, isOnline, status, class = GetGuildRosterInfo(i)
+		local name, rankName, rankIndex, level, _, zone, _, _, isOnline, status, class = GetGuildRosterInfo(i)
 		name = U.FullName(name)
 		if name then
 			roster[name] = {
-				rankIndex = rankIndex, level = level, class = class,
+				rankIndex = rankIndex, rankName = U.CleanText(rankName, 30), -- CleanText skips secret values
+				level = level, class = class,
 				zone = zone, online = isOnline and true or false, afk = status == 1,
 			}
 			if isOnline then
@@ -56,6 +57,7 @@ function GH:RebuildRoster()
 		self:Debug("guild list loaded: %d members, %d online", num, online)
 		self:OnRosterReady()
 	end
+	self:RefreshBoard()
 end
 
 function GH:IsGuildMember(name)

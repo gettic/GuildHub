@@ -11,6 +11,15 @@ local defaults = {
 	},
 	profile = {
 		debug = false,
+		-- step 2: status board
+		window = { point = "CENTER", x = 0, y = 0 },
+		sort = "activity",
+		compact = false,
+		showNoAddon = true,
+		minimap = { hide = false, angle = 200 },
+		alerts = { lfg = true, help = true, muted = {} },
+		autoActivity = true,
+		inviteFallback = false, -- set for good if the game blocks InviteUnit from the addon
 	},
 	char = {
 		trialNoticeShown = false,
@@ -56,7 +65,8 @@ end
 
 ------------------------------------------------------------------------
 -- Member records
--- members["Name-Realm"] = { class, level, version, lastSeen, ts, (status, prof in later steps) }
+-- members["Name-Realm"] = { class, level, version, lastSeen, ts, status, (prof in step 3) }
+-- status = { p, t, d, a, as, st, ts } is merged separately by its own ts (Status.lua).
 -- ts = when the owner last changed the data; lastSeen = when anyone last saw them online.
 ------------------------------------------------------------------------
 
@@ -161,10 +171,13 @@ function GH:Prune()
 	local cutoff = U.Now() - self.PRUNE_DAYS * 86400
 	local me = self:MyName()
 	local removed = 0
+	local statusCutoff = U.Now() - 86400
 	for name, m in pairs(gdb.members) do
 		if name ~= me and (m.lastSeen or m.ts or 0) < cutoff then
 			gdb.members[name] = nil
 			removed = removed + 1
+		elseif name ~= me and type(m.status) == "table" and (m.status.ts or 0) < statusCutoff then
+			m.status = nil -- statuses are only shown for 1 hour; the member record itself stays
 		end
 	end
 	for i = #gdb.feed, 1, -1 do

@@ -139,6 +139,18 @@ function U.Ago(seconds)
 	return L.T_DAYS:format(floor(seconds / 86400))
 end
 
+-- Board "time" column: "<1 min", "12 min", "1 h 10 min".
+function U.Duration(seconds)
+	seconds = seconds or 0
+	if seconds < 60 then return L.T_LESS_MIN end
+	local m = floor(seconds / 60)
+	if m < 60 then return L.T_MINUTES:format(m) end
+	local h = floor(m / 60)
+	m = m % 60
+	if m == 0 then return L.T_HOURS:format(h) end
+	return L.T_HOURS_MIN:format(h, m)
+end
+
 -- Simple checksum for the splitting test.
 function U.Checksum(s)
 	local sum = 0

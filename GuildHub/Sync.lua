@@ -11,7 +11,7 @@ local _, ns = ...
 local GH, U = ns.GH, ns.Util
 
 local RESPONDER_DELAYS = { 1, 4, 10, 13 }
-local BATCH_SIZE = 10
+local BATCH_SIZE = 6 -- members per SYNC batch (records carry statuses since step 2)
 local ACTIVE_SECONDS = 600 -- a Guild Hub user heard from in the last 10 minutes
 
 GH.syncSeen = {} -- [asker] = GetTime() when someone announced SYNCING for them
@@ -24,6 +24,8 @@ function GH:SendHello()
 	info.since = gdb.lastOnline or 0
 	self:SendMsg("HELLO", info)
 	gdb.lastOnline = U.Now()
+	-- tell the guild our status right away (if we have one)
+	if self:HasStatusToShare() then self:SendStatus() end
 end
 
 -- Same list on every client: active Guild Hub users, online, not in an instance, not the asker.
@@ -85,18 +87,29 @@ function GH:AnswerSync(asker, since)
 	local gdb = self:GetGuildDB()
 	if not gdb or not self:IsOnline(asker) then return end
 	if self:InLockdown() or IsInInstance() then return end
+	local au = self.addonUsers[asker]
+	if au and au.inst then return end -- they went into an instance meanwhile; they ask again later
 
 	self:SendMsg("SYNCING", { n = asker })
 
-	local cutoff = U.Now() - self.PRUNE_DAYS * 86400
-	local names = {}
+	local now = U.Now()
+	local cutoff = now - self.PRUNE_DAYS * 86400
+	local names, newest, statuses = {}, {}, {}
 	for name, m in pairs(gdb.members) do
-		if name ~= asker and (m.ts or 0) > since and (m.lastSeen or 0) >= cutoff then
+		-- statuses only for members online now, whose preset/note is still within its own duration
+		-- (1-8 h) or whose activity changed in the last hour
+		local s = m.status
+		local useful = type(s) == "table" and self:IsOnline(name)
+			and (self:IsStatusFresh(s) or (s.a ~= nil and (now - (s.ts or 0)) < self.STATUS_TTL))
+		local sts = useful and (s.ts or 0) or 0
+		if name ~= asker and (m.lastSeen or 0) >= cutoff and ((m.ts or 0) > since or sts > since) then
 			names[#names + 1] = name
+			newest[name] = math.max(m.ts or 0, sts)
+			if sts > 0 then statuses[name] = self:StatusPayload(s) end
 		end
 	end
 	-- newest first
-	table.sort(names, function(a, b) return (gdb.members[a].ts or 0) > (gdb.members[b].ts or 0) end)
+	table.sort(names, function(a, b) return newest[a] > newest[b] end)
 
 	local cfg = ((gdb.cfg.ts or 0) > since and gdb.cfg.by) and gdb.cfg or nil
 	local batches = math.max(1, math.ceil(#names / BATCH_SIZE))
@@ -105,7 +118,8 @@ function GH:AnswerSync(asker, since)
 		for i = (b - 1) * BATCH_SIZE + 1, math.min(b * BATCH_SIZE, #names) do
 			local name = names[i]
 			local m = gdb.members[name]
-			part[name] = { ts = m.ts, class = m.class, level = m.level, version = m.version, lastSeen = m.lastSeen }
+			part[name] = { ts = m.ts, class = m.class, level = m.level, version = m.version, lastSeen = m.lastSeen,
+				status = statuses[name] } -- older clients drop "status" (CleanRecord ignores unknown fields)
 		end
 		self:SendMsg("SYNC", { b = b, of = batches, m = part, cfg = (b == 1) and cfg or nil }, asker, "BULK")
 	end
@@ -121,10 +135,15 @@ GH.handlers.SYNC = function(self, sender, data, distribution, isSelf)
 			if name and not self:IsGuildMember(name) then name = nil end
 			local clean = name and self:CleanRecord(rec)
 			if clean and self:MergeMember(name, clean) then count = count + 1 end
+			if name and type(rec) == "table" and type(rec.status) == "table" then
+				-- statuses from a sync never show notes
+				self:MergeStatus(name, self:CleanStatus(rec.status))
+			end
 		end
 	end
 	if data.cfg then self:MergeCfg(data.cfg) end
 	self.syncedThisSession = true
+	self:RefreshBoard()
 	self:Debug("sync batch %s/%s from %s: %d records updated", tostring(data.b), tostring(data.of),
 		U.ShortName(sender), count)
 end

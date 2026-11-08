@@ -6,8 +6,25 @@ A guild hub for WoW Forever that lets guildmates see what everyone is doing, whe
 
 - Shares basic info (addon version, level, class) with guildmates who also have Guild Hub.
 - Syncs saved data with them when you log in.
+- A status board: a window that shows what every online guildmate is doing.
+- Your own status: pick one, add a short note, and your guild sees it.
+- Small alerts when a guildmate near your level looks for a group, or someone asks for help.
 
-Planned next: a status board, professions and a guild map. They are not built yet.
+Planned next: professions and a guild map. They are not built yet.
+
+## Status board
+
+Type `/ghub` or click the Guild Hub minimap button to open it. It lists every online guildmate with rank, level, zone, what they are doing and for how long. Each row has Whisper and Invite buttons. You can sort (activity, level, zone, rank, name) and search by name, zone, status or rank. Guildmates without Guild Hub show greyed out.
+
+**Your status.** Pick LFG (then choose a dungeon), Need help, Farming, Leveling, Busy or Open to chat. You can add a short note of up to 60 letters. A new status lasts 1 hour. The "Lasts" button changes that to 1, 2, 4 or 8 hours: left-click for longer, right-click for shorter. Changing the note or the dungeon keeps the time. Choosing another status, or turning it off, clears the old note.
+
+**Automatic activity.** Guild Hub also shares what you are doing (in a dungeon, gathering, AFK, in town, at an inn...). To share only the status you pick yourself, turn off "Share my activity automatically" in the settings.
+
+**Notes.** A small note, with no sound, appears when a guildmate within 5 levels of you starts LFG, or when someone asks for help. You get at most one per player every 5 minutes. Use "Mute" on a note to stop a player's notes (this also hides their status text). Unmute them, or switch the notes off, in the settings.
+
+**Minimap button.** Left-click opens the window. Right-click opens the settings. Drag to move it. You can hide it in the settings.
+
+If the game blocks the Invite button, Guild Hub puts `/invite Name` in your chat box. Press Enter to send it.
 
 ## Install
 
@@ -17,15 +34,18 @@ Copy the `GuildHub` folder into your WoW `AddOns` folder, then restart the game 
 
 | Command | What it does |
 |---|---|
-| `/ghub` | Show help |
+| `/ghub` | Open or close the status board |
+| `/ghub help` | Show the list of commands |
 | `/ghub status` | Show who has Guild Hub and which version |
+| `/ghub options` | Open the settings |
 | `/ghub debug` | Show addon messages |
 | `/ghub test big` | Run a test of splitting a long message |
-| `/ghub options` | Open the settings |
+| `/ghub test activity` | Show what Guild Hub thinks you are doing |
+| `/ghub test expire` | Make your status run out |
 
 ## Settings
 
-Open them with `/ghub options` or in Options > AddOns > Guild Hub. The Guild Master sets which ranks count as officers.
+Open them with `/ghub options`, the minimap button's right-click, or Options > AddOns > Guild Hub. There you can switch off automatic activity and the notes, unmute players, show or hide guildmates without Guild Hub, and hide the minimap button. The Guild Master sets which ranks count as officers.
 
 ## Good to know
 
@@ -46,6 +66,10 @@ The addon lives in `GuildHub\`. Files are loaded in this order (see `GuildHub_Fo
 | `Roster.lua` | Guild roster |
 | `Comm.lua` | Sending and receiving addon messages |
 | `Sync.lua` | Syncing data between guildmates |
+| `Status.lua` | Status logic: presets, activity, alerts, board rows |
+| `UI\Widgets.lua` | Buttons, text boxes and the alert note |
+| `UI\MainFrame.lua` | The window and the minimap button |
+| `UI\StatusTab.lua` | The status board tab |
 | `Options.lua` | Settings page |
 
 ## Credits

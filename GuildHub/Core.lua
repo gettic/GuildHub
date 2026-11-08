@@ -60,6 +60,8 @@ function GH:OnEnable()
 	self:RegisterEvent("PLAYER_LOGOUT", "OnLogout")
 
 	self:CheckTrialAccount()
+	self:InitMinimapButton() -- UI\MainFrame.lua
+	self:InitInviteWatch()   -- UI\StatusTab.lua
 	-- give the game a few seconds to load the guild before we talk
 	self:ScheduleTimer("Startup", 5)
 end
@@ -78,6 +80,7 @@ function GH:Startup()
 	self:ScheduleRepeatingTimer("RequestRoster", self.ROSTER_SECONDS)
 	self:ScheduleRepeatingTimer("SendHeartbeat", self.HEARTBEAT_SECONDS)
 	self:ScheduleRepeatingTimer("Prune", 86400)
+	self:InitStatus()     -- Status.lua: activity checks and the 1-hour clear
 
 	-- HELLO goes out once the guild list has loaded (Roster.lua calls OnRosterReady),
 	-- or after 15 s at the latest.
@@ -120,20 +123,28 @@ end
 ------------------------------------------------------------------------
 function GH:OnSlash(input)
 	local cmd, rest = (input or ""):lower():match("^%s*(%S*)%s*(.-)%s*$")
-	if cmd == "status" then
+	if cmd == "" then
+		self:ToggleMainFrame()
+	elseif cmd == "status" then
 		self:PrintStatus()
 	elseif cmd == "debug" then
 		self.db.profile.debug = not self.db.profile.debug
 		self:Msg(self.db.profile.debug and L.DEBUG_ON or L.DEBUG_OFF)
 	elseif cmd == "test" and rest == "big" then
 		self:SendBigTest()
+	elseif cmd == "test" and rest == "activity" then
+		self:TestActivity()
+	elseif cmd == "test" and rest == "expire" then
+		self:TestExpire()
 	elseif cmd == "options" or cmd == "config" or cmd == "settings" then
 		self:OpenOptions()
 	else
 		self:Msg(L.HELP_HEADER)
+		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_OPEN)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_STATUS)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_DEBUG)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_TEST)
+		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_TEST2)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_OPTIONS)
 	end
 end
