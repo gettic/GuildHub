@@ -19,7 +19,7 @@ W.ART = {
 	-- templates (checked with W.HasTemplate before use)
 	frame = "ButtonFrameTemplate",           -- the full window
 	inset = "InsetFrameTemplate",            -- list, own-status panel, settings
-	tab = "PanelTabButtonTemplate",          -- tabs under the window
+	tab = "PanelTopTabButtonTemplate",       -- tabs at the top, under the title bar
 	button = "UIPanelButtonTemplate",        -- red buttons
 	search = "SearchBoxTemplate",
 	input = "InputBoxTemplate",

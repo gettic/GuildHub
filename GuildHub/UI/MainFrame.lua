@@ -3,10 +3,11 @@ local _, ns = ...
 local GH, L, U = ns.GH, ns.L, ns.Util
 local W = ns.Widgets
 
--- 1046: room for the RANK and GROUP columns; 492 = 28 title bar + 456 pages + 8 border
-local WIDTH, HEIGHT = 1046, 492
-local TAB_ROOM = 32 -- the tabs hang under the window: keep them on screen
--- tabs: label/sub are Locale keys; right = anchored at the right end of the window
+-- 1046: room for the RANK and GROUP columns; 524 = 24 title bar + 34 tab row + 2 gap + 456 pages + 8 border
+local WIDTH, HEIGHT = 1046, 524
+local TAB_LINE = -58 -- the tabs' bottom edge (they sit just under the title bar)
+local PAGE_TOP = -60 -- the pages start right under the tab row
+-- tabs: label/sub are Locale keys; right = anchored at the right end of the tab row
 local TABS = {
 	{ key = "status", label = "TAB_STATUS", sub = "WIN_SUB" },
 	{ key = "settings", label = "TAB_SETTINGS", sub = "WIN_SUB_SETTINGS", right = true },
@@ -34,7 +35,8 @@ local function MakeWindow()
 		f.closeButton = W.Child(f, "CloseButton")
 		-- the subtitle sits in the title bar (on its TitleContainer so the border art doesn't cover it)
 		local bar = W.Child(f, "TitleContainer") or f
-		f.sub = W.Text(bar, "GameFontDisableSmall", L.WIN_SUB)
+		f.sub = W.Text(bar, "GameFontHighlightSmall", L.WIN_SUB) -- white: grey was hard to read on the title bar
+		f.sub:SetTextColor(W.COLOR.highlight[1], W.COLOR.highlight[2], W.COLOR.highlight[3])
 		f.sub:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -6)
 	else
 		f = CreateFrame("Frame", "GuildHubMainFrame", UIParent, "BackdropTemplate")
@@ -42,7 +44,8 @@ local function MakeWindow()
 		f:SetBackdropBorderColor(0.6, 0.48, 0.22, 1)
 		local title = W.Text(f, "GameFontNormal", L.WIN_TITLE)
 		title:SetPoint("TOPLEFT", 12, -8)
-		f.sub = W.Text(f, "GameFontDisableSmall", L.WIN_SUB)
+		f.sub = W.Text(f, "GameFontHighlightSmall", L.WIN_SUB) -- white: grey was hard to read on the title bar
+		f.sub:SetTextColor(W.COLOR.highlight[1], W.COLOR.highlight[2], W.COLOR.highlight[3])
 		f.sub:SetPoint("LEFT", title, "RIGHT", 10, -1)
 	end
 	if not f.closeButton then
@@ -52,8 +55,11 @@ local function MakeWindow()
 	return f
 end
 
--- Tabs under the window: PanelTabButtonTemplate (selected with PanelTemplates_SetTab), else
--- plain buttons. Left tabs fill from the left; Settings sits at the right end.
+-- Tabs at the top, just under the title bar: PanelTopTabButtonTemplate (selected with
+-- PanelTemplates_SetTab; its OnLoad marks it isTopTab, its art sits at the bottom of the button),
+-- else plain buttons. Left tabs fill from the left; Settings sits at the right end.
+-- Every tab is anchored by its BOTTOM edge to TAB_LINE, so whatever height the template has,
+-- the visible tab rests on the page and never reaches into the title bar art.
 local function MakeTabs(f)
 	local useTpl = PanelTemplates_SetNumTabs and PanelTemplates_SetTab and W.HasTemplate(W.ART.tab)
 	f.tabs, f.Tabs = {}, {}
@@ -77,14 +83,14 @@ local function MakeTabs(f)
 	for i, t in ipairs(TABS) do
 		local b = f.Tabs[i]
 		b:ClearAllPoints()
-		local dy = f.tabTemplate and 2 or -2
+		local line = f.tabTemplate and TAB_LINE or TAB_LINE + 2
 		if t.right then
-			b:SetPoint("TOPRIGHT", f, "BOTTOMRIGHT", -11, dy)
+			b:SetPoint("BOTTOMRIGHT", f, "TOPRIGHT", -14, line)
 		elseif prev then
-			b:SetPoint("TOPLEFT", prev, "TOPRIGHT", f.tabTemplate and 3 or 6, 0)
+			b:SetPoint("BOTTOMLEFT", prev, "BOTTOMRIGHT", f.tabTemplate and 3 or 6, 0)
 			prev = b
 		else
-			b:SetPoint("TOPLEFT", f, "BOTTOMLEFT", 11, dy)
+			b:SetPoint("BOTTOMLEFT", f, "TOPLEFT", 14, line)
 			prev = b
 		end
 	end
@@ -97,7 +103,6 @@ function GH:CreateMainFrame()
 	f:SetFrameStrata("HIGH")
 	f:SetToplevel(true)
 	f:SetClampedToScreen(true)
-	f:SetClampRectInsets(0, 0, 0, -TAB_ROOM) -- the tabs under the window stay on screen
 	f:EnableMouse(true)
 	f:SetMovable(true)
 	f:RegisterForDrag("LeftButton")
@@ -126,9 +131,9 @@ function GH:CreateMainFrame()
 	W.Tooltip(mini, L.MINI_TIP)
 	f.miniButton = mini
 
-	-- pages: 1030 x 456 under the title bar
+	-- pages: 1030 x 456 under the tab row
 	local content = CreateFrame("Frame", nil, f)
-	content:SetPoint("TOPLEFT", 8, -28)
+	content:SetPoint("TOPLEFT", 8, PAGE_TOP)
 	content:SetPoint("BOTTOMRIGHT", -8, 8)
 	f.content = content
 	f.pages = {}

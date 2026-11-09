@@ -362,9 +362,12 @@ function GH:BuildStatusTab(parent)
 	tab.empty:SetPoint("TOP", 0, -40)
 
 	-- footer
-	tab.footer = W.Text(parent, "GameFontDisableSmall")
+	-- footer on the window's own background: white count, gold note (grey was hard to read there)
+	tab.footer = W.Text(parent, "GameFontHighlightSmall")
+	tab.footer:SetTextColor(W.COLOR.highlight[1], W.COLOR.highlight[2], W.COLOR.highlight[3])
 	tab.footer:SetPoint("BOTTOMLEFT", 8, 8)
-	local fr = W.Text(parent, "GameFontDisableSmall", L.FOOTER_RIGHT, "RIGHT")
+	local fr = W.Text(parent, "GameFontNormalSmall", L.FOOTER_RIGHT, "RIGHT")
+	fr:SetTextColor(W.COLOR.normal[1], W.COLOR.normal[2], W.COLOR.normal[3])
 	-- right-aligned to the list's right edge, 400 px wide (the text needs ~230 px; the left footer
 	-- "N online · M with Guild Hub" ends well before x 330, so they never overlap)
 	fr:SetPoint("BOTTOMRIGHT", parent, "BOTTOMLEFT", 8 + LIST_W, 8)
