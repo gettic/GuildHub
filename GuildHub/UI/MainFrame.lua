@@ -44,11 +44,17 @@ function GH:CreateMainFrame()
 	local sub = W.Text(f, "GameFontDisableSmall", L.WIN_SUB)
 	sub:SetPoint("LEFT", title, "RIGHT", 10, -1)
 	f.sub = sub
-	local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+	local close = W.TitleButton(f, "close")
 	close:SetPoint("TOPRIGHT", -4, -4)
-	-- mini mode button, just left of the close button
-	local mini = W.Button(f, "-", 22, 22, "GameFontNormal")
-	mini:SetPoint("RIGHT", close, "LEFT", -4, 0)
+	-- mini mode button, just left of the close button, same size and art family (Blizzard red)
+	local mini = W.TitleButton(f, "condense")
+	if mini.fallback then
+		mini:SetPoint("RIGHT", close, "LEFT", -4, 0)
+	else
+		local w, h = close:GetSize()
+		if w and h and w > 0 then mini:SetSize(w, h) end
+		mini:SetPoint("RIGHT", close, "LEFT", 2, 0)
+	end
 	mini:SetScript("OnClick", function() GH:SetMiniMode(true) end)
 	W.Tooltip(mini, L.MINI_TIP)
 	f.miniButton = mini

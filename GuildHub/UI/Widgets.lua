@@ -1,6 +1,7 @@
 -- Guild Hub: small shared UI parts (panels, buttons, text boxes, the alert note).
--- Only our own plain frames and built-in game textures; no secure frames, no templates
--- except BackdropTemplate and UIPanelCloseButton.
+-- Only our own plain frames and built-in game textures/atlases; no secure frames, no templates
+-- except BackdropTemplate and UIPanelCloseButton (close buttons of the full and the mini window,
+-- see W.TitleButton).
 local _, ns = ...
 local GH, L, U = ns.GH, ns.L, ns.Util
 
@@ -50,6 +51,49 @@ function W.Button(parent, text, width, height, font)
 		if on then self:SetBackdropColor(0.3, 0.24, 0.1, 0.95) else self:SetBackdropColor(0.12, 0.1, 0.07, 0.9) end
 		self.label:SetTextColor(on and 1 or 0.9, on and 0.85 or 0.88, on and 0.5 or 0.8)
 	end
+	return b
+end
+
+------------------------------------------------------------------------
+-- Title bar buttons (close, mini, back to full): Blizzard's red buttons. All the art choice
+-- for them is here, so a theme can swap it in one place. An atlas the game doesn't have is
+-- never used (it would show a green box): then our plain W.Button with a text sign is used.
+------------------------------------------------------------------------
+W.TITLE_ART = {
+	condense = { normal = "RedButton-Condense", pushed = "RedButton-Condense-pressed", disabled = "RedButton-Condense-disabled", text = "-" },
+	expand = { normal = "RedButton-Expand", pushed = "RedButton-Expand-pressed", disabled = "RedButton-Expand-disabled", text = "+" },
+}
+W.TITLE_HIGHLIGHT = "RedButton-Highlight"
+
+function W.HasAtlas(name)
+	if type(name) ~= "string" or not (C_Texture and C_Texture.GetAtlasInfo) then return false end
+	local ok, info = pcall(C_Texture.GetAtlasInfo, name)
+	return ok and info ~= nil
+end
+
+-- kind: "close" (UIPanelCloseButton), "condense" (mini mode), "expand" (back to full).
+-- size: optional square size; atlas buttons default to 32 (like the close button).
+-- Returns the button; b.fallback = true when the plain W.Button was used.
+function W.TitleButton(parent, kind, size)
+	if kind == "close" then
+		local b = CreateFrame("Button", nil, parent, "UIPanelCloseButton")
+		if size then b:SetSize(size, size) end
+		return b
+	end
+	local art = W.TITLE_ART[kind]
+	if art and W.HasAtlas(art.normal) then
+		local b = CreateFrame("Button", nil, parent)
+		b:SetSize(size or 32, size or 32)
+		b:SetNormalAtlas(art.normal)
+		if W.HasAtlas(art.pushed) then b:SetPushedAtlas(art.pushed) end
+		if W.HasAtlas(art.disabled) then b:SetDisabledAtlas(art.disabled) end
+		if W.HasAtlas(W.TITLE_HIGHLIGHT) then b:SetHighlightAtlas(W.TITLE_HIGHLIGHT, "ADD") end
+		b.atlas = art.normal
+		return b
+	end
+	local s = size and math.min(size, 22) or 22
+	local b = W.Button(parent, art and art.text or "?", s, s, "GameFontNormal")
+	b.fallback = true
 	return b
 end
 
