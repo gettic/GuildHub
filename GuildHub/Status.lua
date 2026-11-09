@@ -751,7 +751,8 @@ function GH:LiveZone()
 	return z
 end
 
--- opts: { search = "text", sort = "activity"|"level"|"zone"|"rank"|"name", compact = bool, showNoAddon = bool }
+-- opts: { search = "text", sort = "activity"|"level"|"zone"|"rank"|"name", compact = bool, showNoAddon = bool,
+--         skipSelf = bool (mini window) }
 -- Returns rows, onlineCount, withAddonCount. Header rows: { header = group, count = n }.
 function GH:BuildStatusRows(opts)
 	opts = opts or {}
@@ -800,6 +801,7 @@ function GH:BuildStatusRows(opts)
 			local keep = true
 			if row.noAddon and not opts.showNoAddon then keep = false end
 			if opts.compact and row.group ~= "lfg" then keep = false end
+			if opts.skipSelf and row.isSelf then keep = false end
 			if keep and search then
 				keep = find(lower(row.short), search, 1, true) or find(lower(row.zone), search, 1, true)
 					or find(lower(row.status), search, 1, true) or find(lower(row.rank), search, 1, true)
@@ -837,15 +839,30 @@ end
 ------------------------------------------------------------------------
 -- Redraw the board soon (many updates in a row cause one redraw)
 ------------------------------------------------------------------------
+-- Which boards are on screen: the Status tab of the full window, the mini window.
+function GH:BoardsShown()
+	local f = self.mainFrame
+	local main = f and f:IsShown() and (not f.pages or f.pages.status:IsShown()) and self.DrawStatusTab and true or false
+	local mini = self.miniFrame and self.miniFrame:IsShown() and self.DrawMini and true or false
+	return main, mini
+end
+
+function GH:DrawBoards()
+	local main, mini = self:BoardsShown()
+	if main then self:DrawStatusTab() end
+	if mini then self:DrawMini() end
+end
+
 function GH:RefreshBoard(now)
-	if not (self.mainFrame and self.mainFrame:IsShown() and self.DrawStatusTab) then return end
+	local main, mini = self:BoardsShown()
+	if not (main or mini) then return end
 	if now then
-		self:DrawStatusTab()
+		self:DrawBoards()
 		return
 	end
 	if self.boardTimer then return end
 	self.boardTimer = self:ScheduleTimer(function()
 		GH.boardTimer = nil
-		if GH.mainFrame and GH.mainFrame:IsShown() then GH:DrawStatusTab() end
+		GH:DrawBoards()
 	end, 0.3)
 end

@@ -117,32 +117,35 @@ local function MakeRow(parent)
 		GameTooltip:Show()
 	end)
 	r.invite:SetScript("OnLeave", function() GameTooltip:Hide() end)
-	r:SetScript("OnEnter", function(self)
-		local d = self.data
-		if not d or d.header then return end
-		GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
-		GameTooltip:AddLine(U.ClassColored(d.name, d.class))
-		if d.rank and d.rank ~= "" then GameTooltip:AddLine(d.rank, 0.8, 0.8, 0.8) end
-		GameTooltip:AddLine(L.TIP_LEVEL_ZONE:format(tostring(d.level or "?"), d.zone ~= "" and d.zone or "?"), 1, 1, 1)
-		if d.noAddon then
-			GameTooltip:AddLine(L.NO_ADDON_ROW, 0.6, 0.6, 0.6)
-		elseif d.status ~= "" then
-			GameTooltip:AddLine(d.status, 1, 0.9, 0.6, true) -- cleaned text (no codes)
-		end
-		if d.instFull and d.instFull ~= d.instShort then GameTooltip:AddLine(d.instFull, 0.75, 0.55, 1) end
-		local _, _, grpTip = GH:GroupText(d)
-		if grpTip then GameTooltip:AddLine(grpTip, 0.6, 0.85, 1) end
-		if not d.noAddon and d.since then
-			if d.left then
-				GameTooltip:AddLine(L.TIP_FOR_CLEARS:format(U.Duration(d.since), U.Duration(d.left)), 0.7, 0.7, 0.7)
-			else
-				GameTooltip:AddLine(L.FOR_FMT:format(U.Duration(d.since)), 0.7, 0.7, 0.7)
-			end
-		end
-		GameTooltip:Show()
-	end)
+	r:SetScript("OnEnter", function(self) GH:MemberTooltip(self, self.data) end)
 	r:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	return r
+end
+
+-- Row tooltip (status board and mini window). hint = optional last grey line.
+function GH:MemberTooltip(owner, d, hint)
+	if not d or d.header then return end
+	GameTooltip:SetOwner(owner, "ANCHOR_CURSOR")
+	GameTooltip:AddLine(U.ClassColored(d.name, d.class))
+	if d.rank and d.rank ~= "" then GameTooltip:AddLine(d.rank, 0.8, 0.8, 0.8) end
+	GameTooltip:AddLine(L.TIP_LEVEL_ZONE:format(tostring(d.level or "?"), d.zone ~= "" and d.zone or "?"), 1, 1, 1)
+	if d.noAddon then
+		GameTooltip:AddLine(L.NO_ADDON_ROW, 0.6, 0.6, 0.6)
+	elseif d.status ~= "" then
+		GameTooltip:AddLine(d.status, 1, 0.9, 0.6, true) -- cleaned text (no codes)
+	end
+	if d.instFull and d.instFull ~= d.instShort then GameTooltip:AddLine(d.instFull, 0.75, 0.55, 1) end
+	local _, _, grpTip = GH:GroupText(d)
+	if grpTip then GameTooltip:AddLine(grpTip, 0.6, 0.85, 1) end
+	if not d.noAddon and d.since then
+		if d.left then
+			GameTooltip:AddLine(L.TIP_FOR_CLEARS:format(U.Duration(d.since), U.Duration(d.left)), 0.7, 0.7, 0.7)
+		else
+			GameTooltip:AddLine(L.FOR_FMT:format(U.Duration(d.since)), 0.7, 0.7, 0.7)
+		end
+	end
+	if hint then GameTooltip:AddLine(hint, 0.5, 0.5, 0.5) end
+	GameTooltip:Show()
 end
 
 local function FillRow(r, d)
@@ -296,8 +299,8 @@ function GH:BuildStatusTab(parent)
 	fr:SetWidth(400)
 	tab.footerRight = fr
 
-	-- while the window is open: times and "Clears in" every 10 s, a fresh guild list every 15 s
-	-- (zones, levels, who is online). OnUpdate only runs while the window is shown.
+	-- while the Status tab is open: times and "Clears in" every 10 s, a fresh guild list every 15 s
+	-- (zones, levels, who is online). OnUpdate only runs while this page is shown.
 	parent:SetScript("OnUpdate", function(_, elapsed)
 		tab.tick = (tab.tick or 0) + elapsed
 		tab.rosterTick = (tab.rosterTick or 0) + elapsed

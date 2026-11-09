@@ -1,4 +1,4 @@
--- Guild Hub: settings page (Options -> AddOns -> Guild Hub, or /ghub options).
+-- Guild Hub: settings (Settings tab in the /ghub window, /ghub options, and Options -> AddOns -> Guild Hub).
 local _, ns = ...
 local GH, L, U = ns.GH, ns.L, ns.Util
 
@@ -106,7 +106,61 @@ function GH:InitOptions()
 	if ok then self.optionsCategoryID = categoryID end
 end
 
+------------------------------------------------------------------------
+-- Settings tab in the /ghub window: the same options table, drawn by AceConfigDialog into
+-- our own small AceGUI container (not SimpleGroup/InlineGroup, so AceConfigDialog adds its
+-- own scroll frame). Only plain frames: fine in combat.
+------------------------------------------------------------------------
+local PAGE_TYPE, PAGE_VERSION = "GuildHubSettingsPage", 1
+
+local function RegisterPageType(AceGUI)
+	if (AceGUI:GetWidgetVersion(PAGE_TYPE) or 0) >= PAGE_VERSION then return end
+	AceGUI:RegisterWidgetType(PAGE_TYPE, function()
+		local frame = CreateFrame("Frame")
+		frame:Hide()
+		local content = CreateFrame("Frame", nil, frame)
+		content:SetPoint("TOPLEFT", 10, -8)
+		content:SetPoint("BOTTOMRIGHT", -6, 6)
+		local widget = { frame = frame, content = content, type = PAGE_TYPE }
+		widget.OnAcquire = function() end
+		widget.OnWidthSet = function(self, w)
+			local c = math.max(0, w - 16)
+			self.content:SetWidth(c)
+			self.content.width = c
+		end
+		widget.OnHeightSet = function(self, h)
+			local c = math.max(0, h - 14)
+			self.content:SetHeight(c)
+			self.content.height = c
+		end
+		return AceGUI:RegisterAsContainer(widget)
+	end, PAGE_VERSION)
+end
+
+-- Called each time the Settings tab is shown: build the container once, then (re)fill it so
+-- values changed elsewhere (a mute from a note, the minimap button) show up to date.
+function GH:ShowSettingsTab(page)
+	local AceGUI = LibStub("AceGUI-3.0", true)
+	local dialog = LibStub("AceConfigDialog-3.0", true)
+	if not (AceGUI and dialog and page) then return end
+	if not self.settingsContainer then
+		RegisterPageType(AceGUI)
+		local c = AceGUI:Create(PAGE_TYPE)
+		c.frame:SetParent(page)
+		c.frame:ClearAllPoints()
+		c.frame:SetAllPoints(page)
+		c.frame:SetFrameLevel((page:GetFrameLevel() or 0) + 1)
+		self.settingsContainer = c
+	end
+	local c = self.settingsContainer
+	c.frame:Show()
+	dialog:Open("GuildHub", c)
+end
+
+-- /ghub options and minimap right-click: the full window on the Settings tab.
 function GH:OpenOptions()
-	if InCombatLockdown() then return end
-	LibStub("AceConfigDialog-3.0"):Open("GuildHub")
+	if self.db.profile.mini then self:SetMiniMode(false) end
+	local f = self:CreateMainFrame()
+	f:Show()
+	self:ShowTab("settings")
 end

@@ -24,7 +24,9 @@ Type `/ghub` or click the Guild Hub minimap button to open it. It lists every on
 
 **Notes.** A small note, with no sound, appears when a guildmate within 5 levels of you starts LFG, or when someone asks for help. You get at most one per player every 5 minutes. Use "Mute" on a note to stop a player's notes (this also hides their status text). Unmute them, or switch the notes off, in the settings.
 
-**Minimap button.** Left-click opens the window. Right-click opens the settings. Drag to move it. Hover it to see how many guildmates are looking for a group or need help. You can hide it in the settings.
+**Mini mode.** Click the "-" button next to the close button to switch to a small window you can move. It only lists guildmates with Guild Hub and what they are doing. Click a name to whisper. Click "+" to go back to the full window. `/ghub` opens the one you used last. Esc does not close the mini window: use its x or `/ghub`.
+
+**Minimap button.** Left-click opens the window. Right-click opens the Settings tab. Drag to move it. Hover it to see how many guildmates are looking for a group or need help. You can hide it in the settings.
 
 If the game blocks the Invite button, Guild Hub puts `/invite Name` in your chat box. Press Enter to send it.
 
@@ -39,7 +41,7 @@ Copy the `GuildHub` folder into your WoW `AddOns` folder, then restart the game 
 | `/ghub` | Open or close the status board |
 | `/ghub help` | Show the list of commands |
 | `/ghub status` | Show who has Guild Hub and which version |
-| `/ghub options` | Open the settings |
+| `/ghub options` | Open the Settings tab |
 | `/ghub debug` | Show addon messages |
 | `/ghub test big` | Run a test of splitting a long message |
 | `/ghub test activity` | Show what Guild Hub thinks you are doing |
@@ -47,7 +49,7 @@ Copy the `GuildHub` folder into your WoW `AddOns` folder, then restart the game 
 
 ## Settings
 
-Open them with `/ghub options`, the minimap button's right-click, or Options > AddOns > Guild Hub. There you can switch off automatic activity, sharing your group size and the notes, unmute players, show or hide guildmates without Guild Hub, and hide the minimap button. The Guild Master sets which ranks count as officers.
+Open the Settings tab (top right of the `/ghub` window) with `/ghub options` or the minimap button's right-click. The same settings are in Esc > Options > AddOns > Guild Hub. There you can switch off automatic activity, sharing your group size and the notes, unmute players, show or hide guildmates without Guild Hub, and hide the minimap button. The Guild Master sets which ranks count as officers.
 
 ## Good to know
 
@@ -70,9 +72,10 @@ The addon lives in `GuildHub\`. Files are loaded in this order (see `GuildHub_Fo
 | `Sync.lua` | Syncing data between guildmates |
 | `Status.lua` | Status logic: presets, activity, alerts, board rows |
 | `UI\Widgets.lua` | Buttons, text boxes and the alert note |
-| `UI\MainFrame.lua` | The window and the minimap button |
+| `UI\MainFrame.lua` | The window, its tabs and the minimap button |
 | `UI\StatusTab.lua` | The status board tab |
-| `Options.lua` | Settings page |
+| `UI\MiniFrame.lua` | The small mini mode window |
+| `Options.lua` | Settings (the Settings tab and the Options page) |
 
 ## Credits
 

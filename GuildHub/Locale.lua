@@ -9,12 +9,12 @@ L.DEBUG_PREFIX      = "|cff33ccffGuild Hub:|r |cff888888[debug]|r "
 
 -- /ghub help
 L.HELP_HEADER       = "commands:"
-L.HELP_OPEN         = "  /ghub - open or close the Guild Hub window"
+L.HELP_OPEN         = "  /ghub - open or close the Guild Hub window (the small one in mini mode)"
 L.HELP_STATUS       = "  /ghub status - who has Guild Hub and which version"
 L.HELP_DEBUG        = "  /ghub debug - show addon messages as they are sent and received (on/off)"
 L.HELP_TEST         = "  /ghub test big - send one long test message to check splitting"
 L.HELP_TEST2        = "  /ghub test activity - show what Guild Hub thinks you are doing; /ghub test expire - make your status run out"
-L.HELP_OPTIONS      = "  /ghub options - open the settings"
+L.HELP_OPTIONS      = "  /ghub options - open the Settings tab"
 
 -- /ghub status
 L.STATUS_HEADER     = "%d guild members online, %d of them with Guild Hub. Known Guild Hub users:"
@@ -69,6 +69,14 @@ L.OPT_SHAREGROUP_DESC = "Shows guildmates with Guild Hub how many players are in
 L.WIN_TITLE         = "Guild Hub"
 L.WIN_SUB           = "/ghub · status board"
 L.TAB_STATUS        = "Status"
+L.TAB_SETTINGS      = "Settings"
+L.WIN_SUB_SETTINGS  = "/ghub · settings"
+L.MINI_TIP          = "Mini mode: a small window with just what your guildmates are doing"
+L.MINI_BACK_TIP     = "Back to the full Guild Hub window"
+L.MINI_ONLINE       = "%d online with Guild Hub"
+L.MINI_EMPTY        = "Nobody else with Guild Hub is online."
+L.MINI_MORE         = "Scroll for %d more"
+L.MINI_CLICK        = "Click: whisper"
 L.SEARCH_HINT       = "Search name, zone, rank or status"
 L.SORT_FMT          = "Sort: %s"
 L.SORT = { activity = "Activity", level = "Level", zone = "Zone", rank = "Rank", name = "Name" }

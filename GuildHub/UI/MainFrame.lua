@@ -4,6 +4,11 @@ local GH, L, U = ns.GH, ns.L, ns.Util
 local W = ns.Widgets
 
 local WIDTH, HEIGHT = 1046, 540 -- 1046: room for the RANK and GROUP columns
+-- tabs: label/sub are Locale keys; right = anchored at the right end of the tab bar
+local TABS = {
+	{ key = "status", label = "TAB_STATUS", sub = "WIN_SUB" },
+	{ key = "settings", label = "TAB_SETTINGS", sub = "WIN_SUB_SETTINGS", right = true },
+}
 
 function GH:SaveWindowPos()
 	local f = self.mainFrame
@@ -38,23 +43,44 @@ function GH:CreateMainFrame()
 	title:SetPoint("TOPLEFT", 18, -16)
 	local sub = W.Text(f, "GameFontDisableSmall", L.WIN_SUB)
 	sub:SetPoint("LEFT", title, "RIGHT", 10, -1)
+	f.sub = sub
 	local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
 	close:SetPoint("TOPRIGHT", -4, -4)
-
-	-- tab bar (only Status in step 2; Professions and Map come with their steps)
-	local tab = W.Button(f, L.TAB_STATUS, 90, 24, "GameFontNormal")
-	tab:SetPoint("TOPLEFT", 16, -44)
-	tab:SetActive(true)
-	local line = f:CreateTexture(nil, "ARTWORK")
-	line:SetColorTexture(W.BORDER[1], W.BORDER[2], W.BORDER[3], 1)
-	line:SetHeight(1)
-	line:SetPoint("TOPLEFT", 8, -70)
-	line:SetPoint("TOPRIGHT", -8, -70)
+	-- mini mode button, just left of the close button
+	local mini = W.Button(f, "-", 22, 22, "GameFontNormal")
+	mini:SetPoint("RIGHT", close, "LEFT", -4, 0)
+	mini:SetScript("OnClick", function() GH:SetMiniMode(true) end)
+	W.Tooltip(mini, L.MINI_TIP)
+	f.miniButton = mini
 
 	local content = CreateFrame("Frame", nil, f)
 	content:SetPoint("TOPLEFT", 8, -76)
 	content:SetPoint("BOTTOMRIGHT", -8, 8)
 	f.content = content
+
+	-- tab bar: tabs on the left fill from the left (Professions, Map ... come with their steps);
+	-- Settings sits at the right end so later tabs never move it
+	f.tabs, f.pages = {}, {}
+	local x = 16
+	for _, t in ipairs(TABS) do
+		local b = W.Button(f, L[t.label], 90, 24, "GameFontNormal")
+		if t.right then
+			b:SetPoint("TOPRIGHT", -16, -44)
+		else
+			b:SetPoint("TOPLEFT", x, -44)
+			x = x + 96
+		end
+		b:SetScript("OnClick", function() GH:ShowTab(t.key) end)
+		f.tabs[t.key] = b
+		local page = CreateFrame("Frame", nil, content)
+		page:SetAllPoints(content)
+		f.pages[t.key] = page
+	end
+	local line = f:CreateTexture(nil, "ARTWORK")
+	line:SetColorTexture(W.BORDER[1], W.BORDER[2], W.BORDER[3], 1)
+	line:SetHeight(1)
+	line:SetPoint("TOPLEFT", 8, -70)
+	line:SetPoint("TOPRIGHT", -8, -70)
 
 	f:Hide()
 	f:SetScript("OnShow", function()
@@ -65,13 +91,57 @@ function GH:CreateMainFrame()
 		if GH.dungeonPicker then GH.dungeonPicker:Hide() end
 	end)
 	self.mainFrame = f
-	self:BuildStatusTab(content) -- UI\StatusTab.lua
+	self:BuildStatusTab(f.pages.status) -- UI\StatusTab.lua (its OnUpdate stops while the page is hidden)
+	self:ShowTab("status")
 	return f
 end
 
-function GH:ToggleMainFrame()
+-- Switch the window to a tab ("status" or "settings"). Pages are built on first show.
+function GH:ShowTab(key)
 	local f = self:CreateMainFrame()
-	if f:IsShown() then f:Hide() else f:Show() end
+	if not f.pages[key] then key = "status" end
+	f.currentTab = key
+	if self.dungeonPicker then self.dungeonPicker:Hide() end
+	for _, t in ipairs(TABS) do
+		f.tabs[t.key]:SetActive(t.key == key)
+		f.pages[t.key]:SetShown(t.key == key)
+		if t.key == key then f.sub:SetText(L[t.sub]) end
+	end
+	if key == "settings" then
+		self:ShowSettingsTab(f.pages.settings) -- Options.lua
+	elseif f:IsShown() then
+		self:RefreshBoard(true)
+	end
+end
+
+-- /ghub, minimap click: opens the mode used last (full window or mini window), or closes it.
+function GH:ToggleMainFrame()
+	if self.db.profile.mini then
+		local m = self:CreateMiniFrame() -- UI\MiniFrame.lua
+		if m:IsShown() then m:Hide() else m:Show() end
+		return
+	end
+	local f = self:CreateMainFrame()
+	if f:IsShown() then
+		f:Hide()
+	else
+		self:ShowTab("status")
+		f:Show()
+	end
+end
+
+-- Mini mode on: the small window replaces the full one (and back). Remembered in profile.mini.
+function GH:SetMiniMode(on)
+	self.db.profile.mini = on and true or false
+	if on then
+		if self.mainFrame then self.mainFrame:Hide() end
+		self:CreateMiniFrame():Show()
+	else
+		if self.miniFrame then self.miniFrame:Hide() end
+		local f = self:CreateMainFrame()
+		self:ShowTab("status")
+		f:Show()
+	end
 end
 
 ------------------------------------------------------------------------
