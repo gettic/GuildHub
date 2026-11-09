@@ -14,7 +14,7 @@ Planned next: professions and a guild map. They are not built yet.
 
 ## Status board
 
-Type `/ghub` or click the Guild Hub minimap button to open it. It lists every online guildmate with rank, level, zone, what they are doing. How long they have had that status shows in grey at the right end of the STATUS column (for example "12 min"). Hover a row to see when it clears, such as "for 45 min · clears in 15 min". Each row has Whisper and Invite buttons. Click the Sort menu to sort by activity, level, zone, rank or name. Tick "LFG only" to list only guildmates looking for a group. Search by name, zone, status or rank; press Esc in the search box to clear it. Guildmates without Guild Hub show greyed out. The window uses Blizzard's own look, with the Status and Settings tabs at the top, just under the title.
+Type `/ghub` or click the Guild Hub minimap button to open it. It lists every online guildmate with rank, level, zone, what they are doing. How long they have had that status shows in grey at the right end of the STATUS column (for example "12 min"). Hover a row to see when it clears, such as "for 45 min · clears in 15 min". Each row has Whisper and Invite buttons. Click the Sort menu to sort by activity, level, zone, rank or name. Tick "LFG only" to list only guildmates looking for a group. Search by name, zone, status or rank; press Esc in the search box to clear it. Guildmates without Guild Hub show greyed out. The window uses Blizzard's own look. The Status tab sits on the top edge of the list, with Search, Sort and "LFG only" beside it. Settings is the gear button in the title bar.
 
 **Your status.** Pick LFG (then choose a dungeon), Need help, Farming, Leveling, Busy or Open to chat. You can add a short note of up to 60 letters. A new status lasts 1 hour. The "Lasts" button changes that to 1, 2, 4 or 8 hours: left-click for longer, right-click for shorter. Changing the note or the dungeon keeps the time. Choosing another status, or turning it off, clears the old note. Nothing is shared until you press Enter in the note box. "Press Enter to share" shows while your typed note is not shared yet. The dungeon is picked from a drop-down menu.
 
@@ -26,7 +26,7 @@ Type `/ghub` or click the Guild Hub minimap button to open it. It lists every on
 
 **Mini mode.** Click the "-" button next to the close button to switch to a small window you can move. It only lists guildmates with Guild Hub and what they are doing. Click a name to whisper. Click "+" to go back to the full window. `/ghub` and the minimap button always open the full window (if the mini window is showing, it closes). Esc does not close the mini window: use its x.
 
-**Minimap button.** Left-click opens the window. Right-click opens the Settings tab. Drag to move it. Hover it to see how many guildmates are looking for a group or need help. You can hide it in the settings.
+**Minimap button.** Left-click opens the window. Right-click opens Settings. Drag to move it. Hover it to see how many guildmates are looking for a group or need help. You can hide it in the settings.
 
 If the game blocks the Invite button, Guild Hub puts `/invite Name` in your chat box. Press Enter to send it.
 
@@ -41,15 +41,16 @@ Copy the `GuildHub` folder into your WoW `AddOns` folder, then restart the game 
 | `/ghub` | Open or close the status board |
 | `/ghub help` | Show the list of commands |
 | `/ghub status` | Show who has Guild Hub and which version |
-| `/ghub options` | Open the Settings tab |
+| `/ghub options` | Open Settings |
 | `/ghub debug` | Show addon messages |
 | `/ghub test big` | Run a test of splitting a long message |
 | `/ghub test activity` | Show what Guild Hub thinks you are doing |
 | `/ghub test expire` | Make your status run out |
+| `/ghub test ui` | Show which Blizzard art your game gave the window |
 
 ## Settings
 
-Open the Settings tab (top right of the `/ghub` window) with `/ghub options` or the minimap button's right-click. The same settings are in Esc > Options > AddOns > Guild Hub. There you can switch off automatic activity, sharing your group size and the notes, unmute players, show or hide guildmates without Guild Hub, and hide the minimap button. The Guild Master sets which ranks count as officers.
+Click the gear button in the title bar of the `/ghub` window (left of the "-"), or use `/ghub options` or the minimap button's right-click. Click the gear again to go back to Status. The same settings are in Esc > Options > AddOns > Guild Hub. There you can switch off automatic activity, sharing your group size and the notes, unmute players, show or hide guildmates without Guild Hub, and hide the minimap button. The Guild Master sets which ranks count as officers.
 
 ## Good to know
 
@@ -72,10 +73,10 @@ The addon lives in `GuildHub\`. Files are loaded in this order (see `GuildHub_Fo
 | `Sync.lua` | Syncing data between guildmates |
 | `Status.lua` | Status logic: presets, activity, alerts, board rows |
 | `UI\Widgets.lua` | Buttons, text boxes and the alert note |
-| `UI\MainFrame.lua` | The window, its tabs and the minimap button |
+| `UI\MainFrame.lua` | The window, the Status tab, the gear button and the minimap button |
 | `UI\StatusTab.lua` | The status board tab |
 | `UI\MiniFrame.lua` | The small mini mode window |
-| `Options.lua` | Settings (the Settings tab and the Options page) |
+| `Options.lua` | Settings (the Settings page in the window and the Options page) |
 
 ## Credits
 

@@ -213,11 +213,59 @@ W.TITLE_ART = {
 }
 W.TITLE_HIGHLIGHT = "RedButton-Highlight"
 W.ART.titleButtons = W.TITLE_ART
+-- Settings gear in the title bar: a plain icon (not a third red button). Tried in this order:
+-- gear atlases (only if the game has them), then the classic options-button file (only if the
+-- game knows the file), then a plain text button.
+W.ART.gear = {
+	atlases = { "QuestLog-icon-setting", "GM-icon-settings" },
+	file = "Interface\\Buttons\\UI-OptionsButton",
+	text = "?",
+}
 
--- kind: "close" (UIPanelCloseButton), "condense" (mini mode), "expand" (back to full).
+-- Which gear art this client can show: "atlas", name / "file", path / "text", sign.
+function W.GearArt()
+	local g = W.ART.gear
+	for _, a in ipairs(g.atlases) do
+		if W.HasAtlas(a) then return "atlas", a end
+	end
+	if GetFileIDFromPath then
+		local ok, id = pcall(GetFileIDFromPath, g.file)
+		if ok and type(id) == "number" and id > 0 then return "file", g.file end
+	end
+	return "text", g.text
+end
+
+local function GearButton(parent, size)
+	local kind, art = W.GearArt()
+	if kind == "text" then
+		local s = size and math.min(size, 22) or 22
+		local b = W.PlainButton(parent, art, s, s, "GameFontNormal")
+		b.fallback, b.art = true, "text " .. art
+		return b
+	end
+	local b = CreateFrame("Button", nil, parent)
+	b:SetSize(size or 24, size or 24)
+	local icon = b:CreateTexture(nil, "ARTWORK")
+	local hl = b:CreateTexture(nil, "HIGHLIGHT")
+	for _, t in ipairs({ icon, hl }) do
+		if kind == "atlas" then t:SetAtlas(art) else t:SetTexture(art) end
+		t:SetPoint("TOPLEFT", 4, -4)
+		t:SetPoint("BOTTOMRIGHT", -4, 4)
+	end
+	hl:SetBlendMode("ADD")
+	hl:SetAlpha(0.5)
+	b:SetScript("OnMouseDown", function() icon:SetPoint("TOPLEFT", 5, -5); icon:SetPoint("BOTTOMRIGHT", -3, 3) end)
+	b:SetScript("OnMouseUp", function() icon:SetPoint("TOPLEFT", 4, -4); icon:SetPoint("BOTTOMRIGHT", -4, 4) end)
+	b.icon, b.art = icon, kind .. " " .. art
+	return b
+end
+
+-- kind: "close" (UIPanelCloseButton), "condense" (mini mode), "expand" (back to full),
+-- "settings" (gear icon, see W.ART.gear; b.art = the art used).
 -- size: optional square size; atlas buttons default to 32 (like the close button).
 -- Returns the button; b.fallback = true when the plain button was used.
 function W.TitleButton(parent, kind, size)
+	if kind == "settings" then return GearButton(parent, size) end
 	if kind == "close" then
 		local b = CreateFrame("Button", nil, parent, "UIPanelCloseButton")
 		if size then b:SetSize(size, size) end

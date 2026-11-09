@@ -290,7 +290,13 @@ function GH:BuildStatusTab(parent)
 
 	-- top bar: search, sort, "LFG only"
 	local search = W.EditBox(parent, 330, 22, 40, L.SEARCH_HINT, "search")
-	search:SetPoint("TOPLEFT", 10, -6)
+	-- the toolbar sits in the tab row, right of the last tab (MainFrame `f.lastTab`)
+	local lastTab = self.mainFrame and self.mainFrame.lastTab
+	if lastTab then
+		search:SetPoint("BOTTOMLEFT", lastTab, "BOTTOMRIGHT", 24, 4)
+	else
+		search:SetPoint("BOTTOMLEFT", parent, "TOPLEFT", 120, 4)
+	end
 	-- the search box template has its own scripts (clear button, hint): ours are hooked on
 	search:HookScript("OnEnterPressed", function(s) s:ClearFocus() end)
 	search:HookScript("OnEscapePressed", function(s) -- Esc empties the search and shows everyone again
@@ -318,7 +324,7 @@ function GH:BuildStatusTab(parent)
 
 	-- the list sits in an inset with the column titles at its top
 	local inset = W.Inset(parent)
-	inset:SetPoint("TOPLEFT", 2, -34)
+	inset:SetPoint("TOPLEFT", 2, 0) -- from the tab line: the selected tab merges into its top edge
 	inset:SetPoint("BOTTOMLEFT", 2, 24)
 	inset:SetWidth(LIST_W + 20)
 	tab.listInset = inset
@@ -340,7 +346,7 @@ function GH:BuildStatusTab(parent)
 	listArea:SetPoint("BOTTOMLEFT", 6, 4)
 	listArea:SetWidth(LIST_W + 12)
 	tab.listArea = listArea
-	tab.listHeight = 456 - 34 - 24 - 22 - 4 -- page height minus the parts above and below
+	tab.listHeight = 460 - 24 - 22 - 4 -- page height minus footer, column titles and margin (17 rows)
 
 	-- Blizzard's ScrollBox list (rows are reused while scrolling), else our own rows + slider
 	local box, sbar = W.ScrollList(listArea, ROW_H, function(r, d)
@@ -398,7 +404,7 @@ end
 function GH:BuildOwnPanel(parent)
 	local tab = self.statusTab
 	local panel = W.Inset(parent)
-	panel:SetPoint("TOPLEFT", LIST_W + 26, -34)
+	panel:SetPoint("TOPLEFT", LIST_W + 26, 0)
 	panel:SetPoint("BOTTOMRIGHT", -2, 24)
 	tab.panel = panel
 

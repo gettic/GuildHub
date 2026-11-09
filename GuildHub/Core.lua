@@ -136,6 +136,8 @@ function GH:OnSlash(input)
 		self:TestActivity()
 	elseif cmd == "test" and rest == "expire" then
 		self:TestExpire()
+	elseif cmd == "test" and rest == "ui" then
+		self:TestUI() -- UI\MainFrame.lua
 	elseif cmd == "options" or cmd == "config" or cmd == "settings" then
 		self:OpenOptions()
 	else
@@ -145,6 +147,7 @@ function GH:OnSlash(input)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_DEBUG)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_TEST)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_TEST2)
+		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_TEST3)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_OPTIONS)
 	end
 end

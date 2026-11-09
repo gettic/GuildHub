@@ -3,14 +3,18 @@ local _, ns = ...
 local GH, L, U = ns.GH, ns.L, ns.Util
 local W = ns.Widgets
 
--- 1046: room for the RANK and GROUP columns; 524 = 24 title bar + 34 tab row + 2 gap + 456 pages + 8 border
+-- 1046: room for the RANK and GROUP columns; 524 = 56 title bar + tab row, 460 pages, 8 border
 local WIDTH, HEIGHT = 1046, 524
-local TAB_LINE = -58 -- the tabs' bottom edge (they sit just under the title bar)
-local PAGE_TOP = -60 -- the pages start right under the tab row
--- tabs: label/sub are Locale keys; right = anchored at the right end of the tab row
+local TAB_LINE = -58 -- the tabs' bottom edge: 2 px into the page's inset, so the selected tab merges with it
+local PAGE_TOP = -56 -- the pages (and their insets) start here
+-- pages: sub = Locale key of the subtitle. Settings has no tab: the gear button in the title bar.
+local PAGES = {
+	{ key = "status", sub = "WIN_SUB" },
+	{ key = "settings", sub = "WIN_SUB_SETTINGS" },
+}
+-- tabs (label = Locale key), left to right from the left edge; Professions, Map ... come later
 local TABS = {
-	{ key = "status", label = "TAB_STATUS", sub = "WIN_SUB" },
-	{ key = "settings", label = "TAB_SETTINGS", sub = "WIN_SUB_SETTINGS", right = true },
+	{ key = "status", label = "TAB_STATUS" },
 }
 
 function GH:SaveWindowPos()
@@ -55,11 +59,11 @@ local function MakeWindow()
 	return f
 end
 
--- Tabs at the top, just under the title bar: PanelTopTabButtonTemplate (selected with
--- PanelTemplates_SetTab; its OnLoad marks it isTopTab, its art sits at the bottom of the button),
--- else plain buttons. Left tabs fill from the left; Settings sits at the right end.
--- Every tab is anchored by its BOTTOM edge to TAB_LINE, so whatever height the template has,
--- the visible tab rests on the page and never reaches into the title bar art.
+-- Tabs at the top, just under the title bar, sitting on the page's inset: PanelTopTabButtonTemplate
+-- (selected with PanelTemplates_SetTab; its OnLoad marks it isTopTab, its art sits at the bottom of
+-- the button), else plain buttons. Tabs fill from the left, each chained to the one before.
+-- The first tab is anchored by its BOTTOM edge to TAB_LINE, so whatever height the template has,
+-- the visible tab rests on the inset and never reaches into the title bar art.
 local function MakeTabs(f)
 	local useTpl = PanelTemplates_SetNumTabs and PanelTemplates_SetTab and W.HasTemplate(W.ART.tab)
 	f.tabs, f.Tabs = {}, {}
@@ -83,17 +87,30 @@ local function MakeTabs(f)
 	for i, t in ipairs(TABS) do
 		local b = f.Tabs[i]
 		b:ClearAllPoints()
-		local line = f.tabTemplate and TAB_LINE or TAB_LINE + 2
-		if t.right then
-			b:SetPoint("BOTTOMRIGHT", f, "TOPRIGHT", -14, line)
-		elseif prev then
+		if prev then
 			b:SetPoint("BOTTOMLEFT", prev, "BOTTOMRIGHT", f.tabTemplate and 3 or 6, 0)
-			prev = b
 		else
-			b:SetPoint("BOTTOMLEFT", f, "TOPLEFT", 14, line)
-			prev = b
+			b:SetPoint("BOTTOMLEFT", f, "TOPLEFT", 14, f.tabTemplate and TAB_LINE or TAB_LINE + 4)
 		end
+		prev = b
 	end
+	f.lastTab = prev -- the Status page's search box starts right of it
+end
+
+-- Settings gear in the title bar, left of the "-" button (from the right: X, -, gear).
+-- Click: Settings; click again while Settings shows: back to Status.
+local function MakeGear(f, mini)
+	local close = f.closeButton
+	local w = close:GetSize()
+	local gear = W.TitleButton(f, "settings", (not mini.fallback and w and w > 0) and w or nil)
+	gear:SetPoint("RIGHT", mini, "LEFT", gear.fallback and -4 or 0, 0)
+	local level = close:GetFrameLevel()
+	if level then gear:SetFrameLevel(level) end
+	gear:SetScript("OnClick", function()
+		GH:ShowTab(f.currentTab == "settings" and "status" or "settings")
+	end)
+	W.Tooltip(gear, L.SETTINGS_TIP)
+	f.gearButton = gear
 end
 
 function GH:CreateMainFrame()
@@ -130,21 +147,22 @@ function GH:CreateMainFrame()
 	mini:SetScript("OnClick", function() GH:SetMiniMode(true) end)
 	W.Tooltip(mini, L.MINI_TIP)
 	f.miniButton = mini
+	MakeGear(f, mini)
 
-	-- pages: 1030 x 456 under the tab row
+	-- pages: 1030 x 460 under the tab row
 	local content = CreateFrame("Frame", nil, f)
 	content:SetPoint("TOPLEFT", 8, PAGE_TOP)
 	content:SetPoint("BOTTOMRIGHT", -8, 8)
 	f.content = content
 	f.pages = {}
-	for _, t in ipairs(TABS) do
+	for _, p in ipairs(PAGES) do
 		local page = CreateFrame("Frame", nil, content)
 		page:SetAllPoints(content)
-		f.pages[t.key] = page
+		f.pages[p.key] = page
 	end
-	-- Settings sits in the same kind of inset as the status list
+	-- Settings sits in the same kind of inset as the status list, from the tab line down
 	local sInset = W.Inset(f.pages.settings)
-	sInset:SetPoint("TOPLEFT", 2, -2)
+	sInset:SetPoint("TOPLEFT", 2, 0)
 	sInset:SetPoint("BOTTOMRIGHT", -2, 2)
 	f.pages.settings.inset = sInset
 	MakeTabs(f) -- tabs on the left fill from the left (Professions, Map ... come with their steps)
@@ -161,26 +179,43 @@ function GH:CreateMainFrame()
 	return f
 end
 
--- Switch the window to a tab ("status" or "settings"). Pages are built on first show.
+-- Switch the window to a page ("status" or "settings" (gear)). Pages are built on first show.
 function GH:ShowTab(key)
 	local f = self:CreateMainFrame()
 	if not f.pages[key] then key = "status" end
 	f.currentTab = key
 	self:HideDungeonPicker()
 	for i, t in ipairs(TABS) do
-		if f.tabTemplate then
-			if t.key == key then pcall(PanelTemplates_SetTab, f, i) end
-		else
+		if not f.tabTemplate then
 			f.tabs[t.key]:SetActive(t.key == key)
+		elseif t.key == key then
+			pcall(PanelTemplates_SetTab, f, i)
+		elseif key == "settings" and PanelTemplates_DeselectTab then
+			pcall(PanelTemplates_DeselectTab, f.Tabs[i]) -- no tab is "on" while Settings shows
 		end
-		f.pages[t.key]:SetShown(t.key == key)
-		if t.key == key then f.sub:SetText(L[t.sub]) end
+	end
+	if key == "settings" then f.selectedTab = nil end -- next SetTab re-selects Status properly
+	for _, p in ipairs(PAGES) do
+		f.pages[p.key]:SetShown(p.key == key)
+		if p.key == key then f.sub:SetText(L[p.sub]) end
+	end
+	local gear = f.gearButton
+	if gear and gear.LockHighlight then
+		if key == "settings" then gear:LockHighlight() else gear:UnlockHighlight() end
 	end
 	if key == "settings" then
 		self:ShowSettingsTab(f.pages.settings) -- Options.lua
 	elseif f:IsShown() then
 		self:RefreshBoard(true)
 	end
+end
+
+-- /ghub test ui: which art this client gave the window (for bug reports).
+function GH:TestUI()
+	local f = self:CreateMainFrame()
+	local yes = function(v) return v and L.YES or L.NO end
+	self:Msg(L.TEST_UI, tostring(f.gearButton and f.gearButton.art or "?"), yes(f.ghTemplate), yes(f.tabTemplate),
+		yes(self.statusTab and self.statusTab.scrollBox), yes(self.statusTab and self.statusTab.sort and self.statusTab.sort.isDropdown))
 end
 
 -- /ghub, minimap left-click: always the full window (open/close). If the mini window is showing,
