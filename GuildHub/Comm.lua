@@ -18,11 +18,12 @@ local MIN_INTERVAL = {
 	CFG     = 10,
 	TEST    = 10,
 	STATUS  = 10,
+	GRP     = 15, -- group size; also waits for 2 s without roster changes (Status.lua)
 	SYNCING = 0,
 	SYNC    = 0,
 }
 -- Kept and sent later when a boss fight / PvP match blocks messages.
-local KEEP_IN_LOCKDOWN = { HELLO = true, HB = true, CFG = true, STATUS = true }
+local KEEP_IN_LOCKDOWN = { HELLO = true, HB = true, CFG = true, STATUS = true, GRP = true }
 
 local MAX_INCOMING = 30000 -- characters; anything bigger is dropped
 
@@ -253,11 +254,15 @@ end
 ------------------------------------------------------------------------
 function GH:SelfInfo()
 	local m = self:UpdateSelf()
+	-- group size (g, r) too, so players who log in learn it; v0.1.2 clients ignore these fields
+	local g, r, gk = self:OwnGroupShare()
+	if gk then self.lastGroupKey = gk end
 	return {
 		v = self.VERSION,
 		class = m and m.class, level = m and m.level, ts = m and m.ts,
 		inst = IsInInstance() and true or false,
 		afk = UnitIsAFK("player") and true or false,
+		g = g, r = r and 1 or nil,
 	}
 end
 
@@ -265,7 +270,10 @@ end
 function GH:ReadSelfInfo(sender, data)
 	self:NoteVersion(sender, data.v)
 	local u = self.addonUsers[sender]
-	if u then u.inst = data.inst == true end
+	if u then
+		u.inst = data.inst == true
+		u.grp = self:CleanGroup(data) -- nil from v0.1.2 clients or when they don't share it
+	end
 	local rec = self:CleanRecord({
 		ts = data.ts, class = data.class, level = data.level, version = data.v, lastSeen = U.Now(),
 	})

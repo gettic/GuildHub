@@ -3,7 +3,7 @@ local _, ns = ...
 local GH, L, U = ns.GH, ns.L, ns.Util
 local W = ns.Widgets
 
-local WIDTH, HEIGHT = 990, 540 -- 990: room for the RANK column
+local WIDTH, HEIGHT = 1046, 540 -- 1046: room for the RANK and GROUP columns
 
 function GH:SaveWindowPos()
 	local f = self.mainFrame

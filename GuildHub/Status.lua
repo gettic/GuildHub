@@ -80,6 +80,49 @@ GH.DUNGEONS = {
 	{ name = "Naxxramas", min = 60, max = 60, raid = true },
 }
 
+-- Short names for the board row ("In a dungeon: RFC"). Keyed by instanceID, the 8th return of
+-- GetInstanceInfo (IDs from warcraft.wiki.gg "InstanceID"; not all seen on Forever yet, so
+-- Scarlet Monastery and Scholomance also list the modern IDs). Names are the English zone names
+-- from the guild list, for senders on v0.1.2 that don't send the ID. "BRS" becomes LBRS / UBRS
+-- by activity (party / raid). Only these short names or the game's own zone text are shown,
+-- never text from a message.
+local INSTANCES = {
+	{ "RFC", { 389 }, { "Ragefire Chasm" } },
+	{ "WC", { 43 }, { "Wailing Caverns" } },
+	{ "DM", { 36 }, { "The Deadmines", "Deadmines" } },
+	{ "SFK", { 33 }, { "Shadowfang Keep" } },
+	{ "BFD", { 48 }, { "Blackfathom Deeps" } },
+	{ "Stocks", { 34 }, { "The Stockade", "Stormwind Stockade" } },
+	{ "Gnomer", { 90 }, { "Gnomeregan" } },
+	{ "RFK", { 47 }, { "Razorfen Kraul" } },
+	{ "SM", { 189, 1004, 1001 }, { "Scarlet Monastery", "Scarlet Halls" } },
+	{ "RFD", { 129 }, { "Razorfen Downs" } },
+	{ "Ulda", { 70 }, { "Uldaman" } },
+	{ "ZF", { 209 }, { "Zul'Farrak" } },
+	{ "Mara", { 349 }, { "Maraudon" } },
+	{ "ST", { 109 }, { "Sunken Temple", "The Temple of Atal'Hakkar", "Temple of Atal'Hakkar" } },
+	{ "BRD", { 230 }, { "Blackrock Depths" } },
+	{ "BRS", { 229 }, { "Blackrock Spire", "Lower Blackrock Spire", "Upper Blackrock Spire" } },
+	{ "Dire Maul", { 429 }, { "Dire Maul" } },
+	{ "Scholo", { 289, 1007 }, { "Scholomance" } },
+	{ "Strat", { 329 }, { "Stratholme" } },
+	{ "MC", { 409 }, { "Molten Core" } },
+	{ "Ony", { 249 }, { "Onyxia's Lair" } },
+	{ "BWL", { 469 }, { "Blackwing Lair" } },
+	{ "ZG", { 309 }, { "Zul'Gurub" } },
+	{ "AQ20", { 509 }, { "Ruins of Ahn'Qiraj" } },
+	{ "AQ40", { 531 }, { "Temple of Ahn'Qiraj", "Ahn'Qiraj Temple" } },
+	{ "Naxx", { 533 }, { "Naxxramas" } },
+}
+local INST_BY_ID, INST_BY_NAME = {}, {}
+for _, e in ipairs(INSTANCES) do
+	local entry = { short = e[1], name = e[3][1] }
+	for _, id in ipairs(e[2]) do INST_BY_ID[id] = entry end
+	for _, n in ipairs(e[3]) do INST_BY_NAME[n] = entry end
+end
+GH.INSTANCE_BY_ID, GH.INSTANCE_BY_NAME = INST_BY_ID, INST_BY_NAME
+local INSTANCE_ID_MAX = 100000
+
 -- Gathering casts (classic spell IDs; /ghub test activity shows the last ID seen, to check on Forever).
 local GATHER_SPELLS = {
 	[2366] = true, [2368] = true, [3570] = true, [11993] = true,   -- Herb Gathering
@@ -255,6 +298,7 @@ function GH:StatusPayload(s)
 		p = fresh and s.p or nil, t = fresh and s.t or nil, d = fresh and s.d or nil,
 		st = fresh and s.st or nil, h = fresh and HOURS_OK[s.h] and s.h ~= 1 and s.h or nil,
 		a = s.a, as = s.a and s.as or nil, ts = s.ts,
+		i = (s.a == "dng" or s.a == "raid") and s.i or nil, -- instanceID (v0.1.2 clients ignore it)
 	}
 end
 
@@ -283,7 +327,10 @@ function GH:CleanStatus(data)
 	local a = type(data.a) == "string" and ACT_OK[data.a] and data.a or nil
 	local d = U.ValidNumber(data.d, 0, #self.DUNGEONS)
 	if d and d ~= floor(d) then d = nil end
+	local i = U.ValidNumber(data.i, 1, INSTANCE_ID_MAX)
+	if i and i ~= floor(i) then i = nil end
 	return {
+		i = (a == "dng" or a == "raid") and i or nil,
 		p = p,
 		t = U.CleanText(data.t, NOTE_MAX),
 		d = (p == "lfg") and d or nil,
@@ -385,12 +432,42 @@ function GH:DetectActivity()
 	return nil
 end
 
+-- Our instance right now: instanceID (8th return of GetInstanceInfo) or nil. Secret values skipped.
+function GH:CurrentInstance()
+	if not GetInstanceInfo then return nil end
+	local id = select(8, GetInstanceInfo())
+	if type(id) ~= "number" or U.IsSecret(id) or id ~= floor(id) or id < 1 or id > INSTANCE_ID_MAX then return nil end
+	return id
+end
+
+-- Short and full name of the instance a status is in: from the ID table, else from the zone name
+-- (guild list / own live zone). The raw zone text is used only when we know they are in some
+-- instance by ID (new clients) or for our own row; v0.1.2 senders get table names only.
+function GH:InstanceLabel(s, zone, isSelf)
+	local a = type(s) == "table" and s.a
+	if a ~= "dng" and a ~= "raid" then return nil end
+	local id = s.i
+	local e = id and INST_BY_ID[id]
+	if not e and type(zone) == "string" and not U.IsSecret(zone) and zone ~= "" then
+		e = INST_BY_NAME[zone]
+		if not e and (id or isSelf) then
+			local z = U.CleanText(zone, 30)
+			if z and z ~= "" then return z, z end
+		end
+	end
+	if not e then return nil end
+	local short = e.short
+	if short == "BRS" then short = (a == "raid") and "UBRS" or "LBRS" end
+	return short, e.name
+end
+
 function GH:EvalActivity(force)
 	if not self.started or InCombatLockdown() then return end
 	local own = self:GetOwnStatus()
 	if not own then return end
 	local cand = self:DetectActivity()
-	if cand == own.a then
+	local candI = (cand == "dng" or cand == "raid") and self:CurrentInstance() or nil
+	if cand == own.a and candI == own.i then
 		self.pendingAct = nil
 		return
 	end
@@ -410,8 +487,9 @@ function GH:EvalActivity(force)
 		if now - self.pendingSince < STICKY then return end
 	end
 	self.pendingAct = nil
+	if cand ~= own.a then own.as = cand and U.Now() or nil end -- another instance keeps "for X min"
 	own.a = cand
-	own.as = cand and U.Now() or nil
+	own.i = candI
 	own.ts = U.Now()
 	self:SendStatus()
 	self:RefreshBoard()
@@ -428,6 +506,11 @@ end
 local ev = CreateFrame("Frame")
 ev:SetScript("OnEvent", function(_, event, ...)
 	if not GH.started then return end
+	if event == "GROUP_ROSTER_UPDATE" then
+		GH:OnGroupChanged()
+		return
+	end
+	if event == "PLAYER_REGEN_ENABLED" and GH.groupPending then GH:SendGroup() end
 	if not IsUsable(...) then return end -- secret value: leave the activity as it is
 	local a, now = GH.activity, GetTime()
 	if event == "UNIT_SPELLCAST_SUCCEEDED" then
@@ -460,9 +543,11 @@ function GH:InitStatus()
 	self.statusStarted = true
 	ev:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
 	for _, e in ipairs({ "QUEST_TURNED_IN", "PLAYER_XP_UPDATE", "PLAYER_LEVEL_UP", "PLAYER_FLAGS_CHANGED",
-		"PLAYER_UPDATE_RESTING", "ZONE_CHANGED_NEW_AREA", "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_ENABLED" }) do
+		"PLAYER_UPDATE_RESTING", "ZONE_CHANGED_NEW_AREA", "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_ENABLED",
+		"GROUP_ROSTER_UPDATE" }) do
 		ev:RegisterEvent(e)
 	end
+	self:ScanMyGroup()
 	local xp = UnitXP("player")
 	if not U.IsSecret(xp) then self.lastXP = xp end
 	self:ScheduleRepeatingTimer("EvalActivity", EVAL_SECONDS)
@@ -485,9 +570,12 @@ function GH:TestActivity()
 	local function ago(t) return (t > NEVER) and L.AGO:format(U.Duration(now - t)) or L.NEVER end
 	local cur = self:DetectActivity()
 	local inInst, itype = IsInInstance()
+	local id = self:CurrentInstance()
+	local short = id and INST_BY_ID[id] and INST_BY_ID[id].short
 	self:Msg(L.TEST_ACTIVITY, cur and L.ACT[cur] or L.AUTO_ACT_NONE,
 		self.db.profile.autoActivity and L.YES or L.NO, tostring(self.lastSpellID or "-"),
-		ago(a.quest), ago(a.xp), IsResting() and L.YES or L.NO, inInst and tostring(itype) or L.NO)
+		ago(a.quest), ago(a.xp), IsResting() and L.YES or L.NO, inInst and tostring(itype) or L.NO,
+		id and (short and ("%d (%s)"):format(id, short) or tostring(id)) or "-")
 end
 
 function GH:TestExpire()
@@ -495,6 +583,118 @@ function GH:TestExpire()
 	if not own or not self:IsStatusFresh(own) then return self:Msg(L.TEST_EXPIRE_NONE) end
 	own.st = U.Now() - self:StatusDuration(own) - 60
 	self:Msg(L.TEST_EXPIRE)
+end
+
+------------------------------------------------------------------------
+-- Groups (GROUP column). Who is in OUR group is read locally (works for everyone, addon or not);
+-- the size of other players' groups comes from their GRP message (and HELLO/HB). Display only:
+-- nothing is ever invited, accepted or whispered because a GRP message arrived.
+------------------------------------------------------------------------
+local GROUP_QUIET = 2 -- seconds without roster changes before we share our group size
+GH.myGroup = {}       -- ["Name-Realm"] = true for everyone in our party/raid (memory only)
+
+function GH:SharesGroup()
+	return self.db.profile.shareGroup ~= false -- on unless turned off in the settings
+end
+
+function GH:SetShareGroup(on)
+	self.db.profile.shareGroup = on and true or false
+	self:SendGroup()
+end
+
+-- Our own group: size (0-40) and raid flag, or nil if the game hides it.
+function GH:GroupInfo()
+	local n = GetNumGroupMembers and GetNumGroupMembers()
+	if type(n) ~= "number" or U.IsSecret(n) or n ~= n then return nil end
+	n = math.max(0, math.min(40, floor(n)))
+	local raid = IsInRaid and IsInRaid()
+	if U.IsSecret(raid) then raid = false end
+	return n, (n > 0 and raid) and true or false
+end
+
+-- Names of everyone in our group, in the same form as the guild list keys ("Name Suffix-Realm").
+function GH:ScanMyGroup()
+	local set = {}
+	local n, raid = self:GroupInfo()
+	if n and n > 0 and GetUnitName then
+		local prefix, count = "party", 4
+		if raid then prefix, count = "raid", 40 end
+		for i = 1, count do
+			local unit = prefix .. i
+			if not UnitExists or UnitExists(unit) then
+				local nm = GetUnitName(unit, true)
+				if type(nm) == "string" and not U.IsSecret(nm) and nm ~= "" then
+					local k = U.FullName(nm)
+					if k then set[k] = true end
+				end
+			end
+		end
+	end
+	self.myGroup = set
+end
+
+-- What we share: g, r, and a key to see if it changed ("off" when sharing is turned off).
+function GH:OwnGroupShare()
+	if not self:SharesGroup() then return nil, nil, "off" end
+	local g, r = self:GroupInfo()
+	if not g then return nil end
+	return g, r, g .. (r and "r" or "")
+end
+
+-- GROUP_ROSTER_UPDATE: update our list at once, share the size after 2 s of quiet.
+function GH:OnGroupChanged()
+	self:ScanMyGroup()
+	self:RefreshBoard()
+	if self.groupTimer then self:CancelTimer(self.groupTimer) end
+	self.groupTimer = self:ScheduleTimer(function()
+		GH.groupTimer = nil
+		GH:SendGroup()
+	end, GROUP_QUIET)
+end
+
+-- Sends GRP only when the shared value changed; waits for the end of combat.
+-- (SendMsg adds the 15-s gap per type and keeps only the newest held message.)
+function GH:SendGroup()
+	if not self.started then return end
+	if InCombatLockdown() then
+		self.groupPending = true
+		return
+	end
+	self.groupPending = nil
+	local g, r, k = self:OwnGroupShare()
+	if not k or k == self.lastGroupKey then return end
+	self.lastGroupKey = k
+	self:SendMsg("GRP", { g = g, r = r and 1 or nil })
+end
+
+-- Received group info: g clamped to 0-40 (whole number), r only 1 = raid. No g = not shared.
+function GH:CleanGroup(data)
+	if type(data) ~= "table" then return nil end
+	local g = data.g
+	if type(g) ~= "number" or U.IsSecret(g) or g ~= g then return nil end
+	g = math.max(0, math.min(40, floor(g)))
+	return { g = g, r = (g > 0 and data.r == 1) or nil }
+end
+
+GH.handlers.GRP = function(self, sender, data, distribution, isSelf)
+	if isSelf or distribution ~= "GUILD" then return end
+	local u = self.addonUsers[sender]
+	if not u then return end
+	u.grp = self:CleanGroup(data)
+	self:RefreshBoard()
+end
+
+-- Text for the GROUP column, a colour kind ("yours", "solo", "other") and the tooltip line.
+function GH:GroupText(d)
+	local g = d.grp
+	local size
+	if g and g.g > 0 then size = (g.r and L.GRP_RAID or L.GRP_PARTY):format(g.g) end
+	if d.inMyGroup then
+		return L.GRP_YOURS, "yours", size and L.TIP_GRP_YOURS:format(size) or L.TIP_GRP_YOURS_PLAIN
+	end
+	if not g then return "", nil, nil end
+	if g.g == 0 then return "-", "solo", L.TIP_GRP_SOLO end
+	return size, "other", (g.r and L.TIP_GRP_RAID or L.TIP_GRP_PARTY):format(g.g)
 end
 
 ------------------------------------------------------------------------
@@ -519,8 +719,9 @@ local function GroupOf(s, fresh)
 	return "other"
 end
 
-function GH:StatusLine(s, fresh, muted)
-	-- preset (+ dungeon) first, then the note: "LFG Scarlet Monastery: need tank", "Busy: back in 10"
+function GH:StatusLine(s, fresh, muted, instShort)
+	-- preset (+ dungeon) first, then the note: "LFG Scarlet Monastery: need tank", "Busy: back in 10";
+	-- with neither, the activity, plus the instance short name: "In a dungeon: RFC"
 	local text
 	if fresh then
 		local head
@@ -536,7 +737,10 @@ function GH:StatusLine(s, fresh, muted)
 			text = head or note
 		end
 	end
-	if not text and s.a then text = L.ACT[s.a] end
+	if not text and s.a then
+		text = L.ACT[s.a]
+		if text and instShort and (s.a == "dng" or s.a == "raid") then text = L.ACT_IN_FMT:format(text, instShort) end
+	end
 	return text or ""
 end
 
@@ -574,7 +778,8 @@ function GH:BuildStatusRows(opts)
 				local fresh = self:IsStatusFresh(s)
 				row.muted = self:IsMuted(name)
 				row.group = GroupOf(s, fresh)
-				row.status = self:StatusLine(s, fresh, row.muted)
+				row.instShort, row.instFull = self:InstanceLabel(s, row.zone, row.isSelf)
+				row.status = self:StatusLine(s, fresh, row.muted, row.instShort)
 				row.preset = fresh and s.p or nil
 				row.act = s.a
 				if fresh and s.st then row.left = math.max(0, self:StatusDuration(s) - (now - s.st)) end
@@ -582,6 +787,15 @@ function GH:BuildStatusRows(opts)
 				elseif s.a and s.as then row.since = now - s.as end
 			else
 				row.group, row.status = "noaddon", ""
+			end
+			-- group column: our own group is read locally; others' size comes from their GRP/HB
+			if row.isSelf or self.myGroup[name] then
+				row.inMyGroup = not row.isSelf or nil
+				local g, r = self:GroupInfo()
+				if g then row.grp = { g = g, r = r or nil } end
+			elseif hasAddon then
+				local u = self.addonUsers[name]
+				row.grp = u and u.grp
 			end
 			local keep = true
 			if row.noAddon and not opts.showNoAddon then keep = false end

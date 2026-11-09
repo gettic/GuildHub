@@ -59,6 +59,12 @@ local function BuildOptions()
 				type = "description", order = 17, name = L.OPT_MUTED_NONE,
 				hidden = function() return next(GH.db.profile.alerts.muted) ~= nil end,
 			},
+			shareGroup = {
+				type = "toggle", order = 17.5, width = "full",
+				name = L.OPT_SHAREGROUP, desc = L.OPT_SHAREGROUP_DESC,
+				get = function() return GH:SharesGroup() end,
+				set = function(_, v) GH:SetShareGroup(v) end,
+			},
 			showNoAddon = {
 				type = "toggle", order = 18, width = "full", name = L.OPT_NOADDON,
 				get = function() return GH.db.profile.showNoAddon end,

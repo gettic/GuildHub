@@ -5,14 +5,16 @@ local GH, L, U = ns.GH, ns.L, ns.Util
 local W = ns.Widgets
 
 local ROW_H = 24
-local LIST_W = 722
+local LIST_W = 778
 local SORTS = { "activity", "level", "zone", "rank", "name" }
 -- column x positions and widths inside a row
 local COL = {
-	-- status 140 px with the time right after it ("for 1 h 10 min" needs ~90 px); actions stay at the right
+	-- status 140 px with the time right after it ("for 1 h 10 min" needs ~90 px), then GROUP
+	-- ("Yours", "3/5", "R 18"); actions stay at the right
 	name = { 8, 116 }, rank = { 128, 86 }, lvl = { 218, 30 }, zone = { 252, 120 }, status = { 376, 140 },
-	time = { 520, 92 }, whisper = { 616, 58 }, invite = { 678, 44 },
+	time = { 520, 92 }, group = { 616, 52 }, whisper = { 672, 58 }, invite = { 734, 44 },
 }
+local GROUP_TEXT_COLOR = { yours = { 0.45, 0.9, 0.45 }, solo = { 0.55, 0.55, 0.55 }, other = { 0.9, 0.9, 0.9 } }
 GH.STATUS_COLUMNS, GH.STATUS_LIST_W = COL, LIST_W -- for the offline test
 
 ------------------------------------------------------------------------
@@ -96,6 +98,7 @@ local function MakeRow(parent)
 	r.zone = col("zone", "GameFontHighlightSmall")
 	r.status = col("status", "GameFontHighlightSmall")
 	r.time = col("time", "GameFontDisableSmall")
+	r.group = col("group", "GameFontHighlightSmall")
 	r.header = W.Text(r, "GameFontNormal")
 	r.header:SetPoint("LEFT", 8, 0)
 	r.whisper = W.Button(r, L.BTN_WHISPER, COL.whisper[2], 18)
@@ -103,7 +106,17 @@ local function MakeRow(parent)
 	r.whisper:SetScript("OnClick", function() GH:WhisperMember(r.member) end)
 	r.invite = W.Button(r, L.BTN_INVITE, COL.invite[2], 18)
 	r.invite:SetPoint("LEFT", COL.invite[1], 0)
-	r.invite:SetScript("OnClick", function() GH:InviteMember(r.member) end)
+	r.invite:SetScript("OnClick", function(self)
+		if self.inGroup then return end -- already in our group (button is greyed out)
+		GH:InviteMember(r.member)
+	end)
+	r.invite:SetScript("OnEnter", function(self)
+		if not self.inGroup then return end
+		GameTooltip:SetOwner(self, "ANCHOR_TOP")
+		GameTooltip:AddLine(L.INVITE_IN_GROUP, 1, 1, 1)
+		GameTooltip:Show()
+	end)
+	r.invite:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	r:SetScript("OnEnter", function(self)
 		local d = self.data
 		if not d or d.header then return end
@@ -116,6 +129,9 @@ local function MakeRow(parent)
 		elseif d.status ~= "" then
 			GameTooltip:AddLine(d.status, 1, 0.9, 0.6, true) -- cleaned text (no codes)
 		end
+		if d.instFull and d.instFull ~= d.instShort then GameTooltip:AddLine(d.instFull, 0.75, 0.55, 1) end
+		local _, _, grpTip = GH:GroupText(d)
+		if grpTip then GameTooltip:AddLine(grpTip, 0.6, 0.85, 1) end
 		if not d.noAddon and d.since then
 			if d.left then
 				GameTooltip:AddLine(L.TIP_FOR_CLEARS:format(U.Duration(d.since), U.Duration(d.left)), 0.7, 0.7, 0.7)
@@ -134,7 +150,7 @@ local function FillRow(r, d)
 	r.member = d.name
 	local isHeader = d.header ~= nil
 	r.header:SetShown(isHeader)
-	for _, k in ipairs({ "name", "rank", "lvl", "zone", "status", "time" }) do r[k]:SetShown(not isHeader) end
+	for _, k in ipairs({ "name", "rank", "lvl", "zone", "status", "time", "group" }) do r[k]:SetShown(not isHeader) end
 	r.whisper:SetShown(not isHeader and not d.isSelf)
 	r.invite:SetShown(not isHeader and not d.isSelf)
 	r.hl:SetShown(not isHeader)
@@ -162,6 +178,15 @@ local function FillRow(r, d)
 	r.zone:SetTextColor(grey * 0.85, grey * 0.8, grey * 0.65)
 	r.status:SetText(d.status) -- cleaned text from others, never contains | codes
 	r.time:SetText(d.since and L.FOR_FMT:format(U.Duration(d.since)) or "")
+	local gText, gKind = GH:GroupText(d)
+	local gc = GROUP_TEXT_COLOR[gKind] or GROUP_TEXT_COLOR.other
+	r.group:SetText(gText)
+	r.group:SetTextColor(gc[1], gc[2], gc[3])
+	-- Invite greyed out (and does nothing) for players already in our group
+	local inGroup = d.inMyGroup == true
+	r.invite.inGroup = inGroup
+	r.invite:SetEnabled(not inGroup)
+	if inGroup then r.invite.label:SetTextColor(0.45, 0.45, 0.45) else r.invite:SetActive(false) end
 end
 
 function GH:BuildStatusTab(parent)
@@ -209,7 +234,7 @@ function GH:BuildStatusTab(parent)
 	-- column titles
 	local heads = {
 		{ "name", L.COL_NAME }, { "rank", L.COL_RANK }, { "lvl", L.COL_LVL }, { "zone", L.COL_ZONE }, { "status", L.COL_STATUS },
-		{ "time", L.COL_TIME }, { "whisper", L.COL_ACTIONS },
+		{ "time", L.COL_TIME }, { "group", L.COL_GROUP }, { "whisper", L.COL_ACTIONS },
 	}
 	for _, h in ipairs(heads) do
 		local fs = W.Text(parent, "GameFontDisableSmall", h[2])
