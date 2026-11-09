@@ -3,8 +3,10 @@ local _, ns = ...
 local GH, L, U = ns.GH, ns.L, ns.Util
 local W = ns.Widgets
 
-local WIDTH, HEIGHT = 1046, 540 -- 1046: room for the RANK and GROUP columns
--- tabs: label/sub are Locale keys; right = anchored at the right end of the tab bar
+-- 1046: room for the RANK and GROUP columns; 492 = 28 title bar + 456 pages + 8 border
+local WIDTH, HEIGHT = 1046, 492
+local TAB_ROOM = 32 -- the tabs hang under the window: keep them on screen
+-- tabs: label/sub are Locale keys; right = anchored at the right end of the window
 local TABS = {
 	{ key = "status", label = "TAB_STATUS", sub = "WIN_SUB" },
 	{ key = "settings", label = "TAB_SETTINGS", sub = "WIN_SUB_SETTINGS", right = true },
@@ -18,15 +20,84 @@ function GH:SaveWindowPos()
 	w.point, w.x, w.y = point or "CENTER", x or 0, y or 0
 end
 
+-- The window frame: Blizzard's ButtonFrameTemplate (portrait hidden, title "Guild Hub", its own
+-- close button), else our plain dark box with a title text and a close button.
+local function MakeWindow()
+	local f = W.FromTemplate("Frame", "GuildHubMainFrame", UIParent, "frame")
+	if f then
+		if ButtonFrameTemplate_HidePortrait then pcall(ButtonFrameTemplate_HidePortrait, f) end
+		local portrait = W.Child(f, "PortraitContainer", "portrait")
+		if portrait then portrait:Hide() end
+		if f.SetTitle then f:SetTitle(L.WIN_TITLE) end
+		local inset = W.Child(f, "Inset")
+		if inset then inset:Hide() end -- we place our own insets
+		f.closeButton = W.Child(f, "CloseButton")
+		-- the subtitle sits in the title bar (on its TitleContainer so the border art doesn't cover it)
+		local bar = W.Child(f, "TitleContainer") or f
+		f.sub = W.Text(bar, "GameFontDisableSmall", L.WIN_SUB)
+		f.sub:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -6)
+	else
+		f = CreateFrame("Frame", "GuildHubMainFrame", UIParent, "BackdropTemplate")
+		W.Skin(f, 0.97)
+		f:SetBackdropBorderColor(0.6, 0.48, 0.22, 1)
+		local title = W.Text(f, "GameFontNormal", L.WIN_TITLE)
+		title:SetPoint("TOPLEFT", 12, -8)
+		f.sub = W.Text(f, "GameFontDisableSmall", L.WIN_SUB)
+		f.sub:SetPoint("LEFT", title, "RIGHT", 10, -1)
+	end
+	if not f.closeButton then
+		f.closeButton = W.TitleButton(f, "close")
+		f.closeButton:SetPoint("TOPRIGHT", 0, 0)
+	end
+	return f
+end
+
+-- Tabs under the window: PanelTabButtonTemplate (selected with PanelTemplates_SetTab), else
+-- plain buttons. Left tabs fill from the left; Settings sits at the right end.
+local function MakeTabs(f)
+	local useTpl = PanelTemplates_SetNumTabs and PanelTemplates_SetTab and W.HasTemplate(W.ART.tab)
+	f.tabs, f.Tabs = {}, {}
+	for i, t in ipairs(TABS) do
+		local b = useTpl and W.FromTemplate("Button", "GuildHubMainFrameTab" .. i, f, "tab")
+		if b then
+			b:SetID(i)
+			b:SetText(L[t.label])
+			if PanelTemplates_TabResize then pcall(PanelTemplates_TabResize, b, 0) end
+		else
+			b = W.PlainButton(f, L[t.label], 90, 24, "GameFontNormal")
+		end
+		b:SetScript("OnClick", function() GH:ShowTab(t.key) end)
+		f.tabs[t.key] = b
+		f.Tabs[i] = b
+	end
+	f.tabTemplate = useTpl and f.Tabs[1] and not f.Tabs[1].plain or false
+	if f.tabTemplate then pcall(PanelTemplates_SetNumTabs, f, #TABS) end
+	-- our own anchors (after SetNumTabs, which chains every tab to the one before it)
+	local prev
+	for i, t in ipairs(TABS) do
+		local b = f.Tabs[i]
+		b:ClearAllPoints()
+		local dy = f.tabTemplate and 2 or -2
+		if t.right then
+			b:SetPoint("TOPRIGHT", f, "BOTTOMRIGHT", -11, dy)
+		elseif prev then
+			b:SetPoint("TOPLEFT", prev, "TOPRIGHT", f.tabTemplate and 3 or 6, 0)
+			prev = b
+		else
+			b:SetPoint("TOPLEFT", f, "BOTTOMLEFT", 11, dy)
+			prev = b
+		end
+	end
+end
+
 function GH:CreateMainFrame()
 	if self.mainFrame then return self.mainFrame end
-	local f = CreateFrame("Frame", "GuildHubMainFrame", UIParent, "BackdropTemplate")
+	local f = MakeWindow()
 	f:SetSize(WIDTH, HEIGHT)
-	W.Skin(f, 0.97)
-	f:SetBackdropBorderColor(0.6, 0.48, 0.22, 1)
 	f:SetFrameStrata("HIGH")
 	f:SetToplevel(true)
 	f:SetClampedToScreen(true)
+	f:SetClampRectInsets(0, 0, 0, -TAB_ROOM) -- the tabs under the window stay on screen
 	f:EnableMouse(true)
 	f:SetMovable(true)
 	f:RegisterForDrag("LeftButton")
@@ -39,14 +110,8 @@ function GH:CreateMainFrame()
 	f:SetPoint(pos.point or "CENTER", UIParent, pos.point or "CENTER", pos.x or 0, pos.y or 0)
 	tinsert(UISpecialFrames, "GuildHubMainFrame") -- Esc closes it
 
-	local title = W.Text(f, "GameFontNormalLarge", L.WIN_TITLE)
-	title:SetPoint("TOPLEFT", 18, -16)
-	local sub = W.Text(f, "GameFontDisableSmall", L.WIN_SUB)
-	sub:SetPoint("LEFT", title, "RIGHT", 10, -1)
-	f.sub = sub
-	local close = W.TitleButton(f, "close")
-	close:SetPoint("TOPRIGHT", -4, -4)
 	-- mini mode button, just left of the close button, same size and art family (Blizzard red)
+	local close = f.closeButton
 	local mini = W.TitleButton(f, "condense")
 	if mini.fallback then
 		mini:SetPoint("RIGHT", close, "LEFT", -4, 0)
@@ -55,47 +120,36 @@ function GH:CreateMainFrame()
 		if w and h and w > 0 then mini:SetSize(w, h) end
 		mini:SetPoint("RIGHT", close, "LEFT", 2, 0)
 	end
+	local level = close:GetFrameLevel() -- same layer as the close button, above the border art
+	if level then mini:SetFrameLevel(level) end
 	mini:SetScript("OnClick", function() GH:SetMiniMode(true) end)
 	W.Tooltip(mini, L.MINI_TIP)
 	f.miniButton = mini
 
+	-- pages: 1030 x 456 under the title bar
 	local content = CreateFrame("Frame", nil, f)
-	content:SetPoint("TOPLEFT", 8, -76)
+	content:SetPoint("TOPLEFT", 8, -28)
 	content:SetPoint("BOTTOMRIGHT", -8, 8)
 	f.content = content
-
-	-- tab bar: tabs on the left fill from the left (Professions, Map ... come with their steps);
-	-- Settings sits at the right end so later tabs never move it
-	f.tabs, f.pages = {}, {}
-	local x = 16
+	f.pages = {}
 	for _, t in ipairs(TABS) do
-		local b = W.Button(f, L[t.label], 90, 24, "GameFontNormal")
-		if t.right then
-			b:SetPoint("TOPRIGHT", -16, -44)
-		else
-			b:SetPoint("TOPLEFT", x, -44)
-			x = x + 96
-		end
-		b:SetScript("OnClick", function() GH:ShowTab(t.key) end)
-		f.tabs[t.key] = b
 		local page = CreateFrame("Frame", nil, content)
 		page:SetAllPoints(content)
 		f.pages[t.key] = page
 	end
-	local line = f:CreateTexture(nil, "ARTWORK")
-	line:SetColorTexture(W.BORDER[1], W.BORDER[2], W.BORDER[3], 1)
-	line:SetHeight(1)
-	line:SetPoint("TOPLEFT", 8, -70)
-	line:SetPoint("TOPRIGHT", -8, -70)
+	-- Settings sits in the same kind of inset as the status list
+	local sInset = W.Inset(f.pages.settings)
+	sInset:SetPoint("TOPLEFT", 2, -2)
+	sInset:SetPoint("BOTTOMRIGHT", -2, 2)
+	f.pages.settings.inset = sInset
+	MakeTabs(f) -- tabs on the left fill from the left (Professions, Map ... come with their steps)
 
 	f:Hide()
 	f:SetScript("OnShow", function()
 		GH:RequestRoster()
 		GH:RefreshBoard(true)
 	end)
-	f:SetScript("OnHide", function()
-		if GH.dungeonPicker then GH.dungeonPicker:Hide() end
-	end)
+	f:SetScript("OnHide", function() GH:HideDungeonPicker() end)
 	self.mainFrame = f
 	self:BuildStatusTab(f.pages.status) -- UI\StatusTab.lua (its OnUpdate stops while the page is hidden)
 	self:ShowTab("status")
@@ -107,9 +161,13 @@ function GH:ShowTab(key)
 	local f = self:CreateMainFrame()
 	if not f.pages[key] then key = "status" end
 	f.currentTab = key
-	if self.dungeonPicker then self.dungeonPicker:Hide() end
-	for _, t in ipairs(TABS) do
-		f.tabs[t.key]:SetActive(t.key == key)
+	self:HideDungeonPicker()
+	for i, t in ipairs(TABS) do
+		if f.tabTemplate then
+			if t.key == key then pcall(PanelTemplates_SetTab, f, i) end
+		else
+			f.tabs[t.key]:SetActive(t.key == key)
+		end
 		f.pages[t.key]:SetShown(t.key == key)
 		if t.key == key then f.sub:SetText(L[t.sub]) end
 	end
@@ -120,15 +178,13 @@ function GH:ShowTab(key)
 	end
 end
 
--- /ghub, minimap click: opens the mode used last (full window or mini window), or closes it.
+-- /ghub, minimap left-click: always the full window (open/close). If the mini window is showing,
+-- it closes and the full window opens. The mini window only opens with the "-" button.
 function GH:ToggleMainFrame()
-	if self.db.profile.mini then
-		local m = self:CreateMiniFrame() -- UI\MiniFrame.lua
-		if m:IsShown() then m:Hide() else m:Show() end
-		return
-	end
 	local f = self:CreateMainFrame()
-	if f:IsShown() then
+	if self.miniFrame and self.miniFrame:IsShown() then
+		self:SetMiniMode(false)
+	elseif f:IsShown() then
 		f:Hide()
 	else
 		self:ShowTab("status")
@@ -136,9 +192,9 @@ function GH:ToggleMainFrame()
 	end
 end
 
--- Mini mode on: the small window replaces the full one (and back). Remembered in profile.mini.
+-- Mini mode on: the small window replaces the full one (and back). Not remembered: /ghub
+-- always opens the full window. (An old saved profile.mini from beta.2/3 is simply ignored.)
 function GH:SetMiniMode(on)
-	self.db.profile.mini = on and true or false
 	if on then
 		if self.mainFrame then self.mainFrame:Hide() end
 		self:CreateMiniFrame():Show()

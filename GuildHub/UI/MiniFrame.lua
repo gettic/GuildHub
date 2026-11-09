@@ -1,5 +1,6 @@
 -- Guild Hub: the mini window (mini mode). A small, movable list of what guildmates with
--- Guild Hub are doing. Only our own plain frames; a row click only opens the whisper box.
+-- Guild Hub are doing. Plain display frames and templates only (W.Popup, W.ScrollList);
+-- a row click only opens the whisper box.
 -- Esc does not close it (it is meant to stay on screen); [+] goes back to the full window.
 local _, ns = ...
 local GH, L, U = ns.GH, ns.L, ns.Util
@@ -21,14 +22,11 @@ function GH:SaveMiniPos()
 	w.point, w.x, w.y = point or "CENTER", x or 0, y or 0
 end
 
-local function MakeMiniRow(parent)
-	local r = CreateFrame("Button", nil, parent)
-	r:SetSize(ROW_W, ROW_H)
+-- Builds one row's parts on frame r (our own row, or a ScrollBox row frame, built once).
+local function SetupMiniRow(r)
+	r.ghRow = true
 	r:RegisterForClicks("LeftButtonUp")
-	local hl = r:CreateTexture(nil, "HIGHLIGHT")
-	hl:SetAllPoints()
-	hl:SetColorTexture(1, 0.85, 0.4, 0.08)
-	r.hl = hl
+	r.hl = W.RowHighlight(r)
 	local function col(key, font, justify)
 		local fs = W.Text(r, font, nil, justify)
 		fs:SetPoint("LEFT", MCOL[key][1], 0)
@@ -39,8 +37,10 @@ local function MakeMiniRow(parent)
 	r.lvl = col("lvl", "GameFontHighlightSmall")
 	r.status = col("status", "GameFontHighlightSmall")
 	r.time = col("time", "GameFontDisableSmall", "RIGHT")
+	r.time:SetTextColor(W.COLOR.gray[1], W.COLOR.gray[2], W.COLOR.gray[3])
 	r.header = W.Text(r, "GameFontNormalSmall")
 	r.header:SetPoint("LEFT", 4, 0)
+	r.headerLine = W.HeaderLine(r, r.header)
 	-- the player's own click only: opens the chat box to whisper, never sends anything
 	r:SetScript("OnClick", function(self)
 		local d = self.data
@@ -48,6 +48,12 @@ local function MakeMiniRow(parent)
 	end)
 	r:SetScript("OnEnter", function(self) GH:MemberTooltip(self, self.data, L.MINI_CLICK) end)
 	r:SetScript("OnLeave", function() GameTooltip:Hide() end)
+end
+
+local function MakeMiniRow(parent)
+	local r = CreateFrame("Button", nil, parent)
+	r:SetSize(ROW_W, ROW_H)
+	SetupMiniRow(r)
 	return r
 end
 
@@ -57,6 +63,7 @@ local function FillMiniRow(r, d)
 	r.header:SetShown(isHeader)
 	for _, k in ipairs({ "name", "lvl", "status", "time" }) do r[k]:SetShown(not isHeader) end
 	r.hl:SetShown(not isHeader)
+	if r.headerLine then r.headerLine:SetShown(isHeader) end
 	if isHeader then
 		local c = GH.GROUP_COLOR[d.header] or W.GOLD
 		r.header:SetText(("%s (%d)"):format(L.GROUP[d.header] or d.header, d.count))
@@ -71,9 +78,8 @@ end
 
 function GH:CreateMiniFrame()
 	if self.miniFrame then return self.miniFrame end
-	local f = CreateFrame("Frame", "GuildHubMiniFrame", UIParent, "BackdropTemplate")
+	local f = W.Popup("GuildHubMiniFrame", UIParent, 0.9) -- tooltip-style border, else our plain box
 	f:SetSize(MINI_W, MINI_H)
-	W.Skin(f, 0.9)
 	f:SetFrameStrata("MEDIUM")
 	f:SetClampedToScreen(true)
 	f:EnableMouse(true)
@@ -105,21 +111,38 @@ function GH:CreateMiniFrame()
 	local list = CreateFrame("Frame", nil, f)
 	list:SetPoint("TOPLEFT", 8, -TOP)
 	list:SetPoint("BOTTOMRIGHT", -8, BOTTOM)
-	list:EnableMouseWheel(true)
-	f.rows = {}
 	f.visible = math.floor((MINI_H - TOP - BOTTOM) / ROW_H)
-	for i = 1, f.visible do
-		local r = MakeMiniRow(list)
-		r:SetPoint("TOPLEFT", 0, -(i - 1) * ROW_H)
-		f.rows[i] = r
-	end
 	f.offset = 0
-	list:SetScript("OnMouseWheel", function(_, delta)
-		local max = math.max(0, #(f.data or {}) - f.visible)
-		f.offset = math.max(0, math.min(max, f.offset - delta * 2))
-		GH:DrawMiniRows()
-	end)
 	f.list = list
+	-- Blizzard's ScrollBox list, scrolled by mouse wheel only (its scroll bar stays hidden),
+	-- else our own rows
+	local box, bar = W.ScrollList(list, ROW_H, function(r, d)
+		if not r.ghRow then SetupMiniRow(r) end
+		FillMiniRow(r, d)
+	end)
+	if box then
+		box:SetAllPoints(list)
+		bar:SetPoint("TOPLEFT", list, "TOPRIGHT", 0, 0)
+		bar:SetPoint("BOTTOMLEFT", list, "BOTTOMRIGHT", 0, 0)
+		bar:Hide()
+		f.scrollBox = box
+		if box.RegisterCallback and BaseScrollBoxEvents and BaseScrollBoxEvents.OnScroll then
+			pcall(box.RegisterCallback, box, BaseScrollBoxEvents.OnScroll, function() GH:UpdateMiniMore() end, f)
+		end
+	else
+		list:EnableMouseWheel(true)
+		f.rows = {}
+		for i = 1, f.visible do
+			local r = MakeMiniRow(list)
+			r:SetPoint("TOPLEFT", 0, -(i - 1) * ROW_H)
+			f.rows[i] = r
+		end
+		list:SetScript("OnMouseWheel", function(_, delta)
+			local max = math.max(0, #(f.data or {}) - f.visible)
+			f.offset = math.max(0, math.min(max, f.offset - delta * 2))
+			GH:DrawMiniRows()
+		end)
+	end
 	f.empty = W.Text(list, "GameFontDisableSmall", L.MINI_EMPTY)
 	f.empty:SetPoint("TOP", 0, -30)
 	f.more = W.Text(f, "GameFontDisableSmall")
@@ -156,13 +179,32 @@ function GH:DrawMini()
 	for _, r in ipairs(rows) do if not r.header then people = people + 1 end end
 	f.data = rows
 	f.count:SetText(L.MINI_ONLINE:format(people))
+	if f.scrollBox then
+		W.SetListData(f.scrollBox, rows, true)
+		f.empty:SetShown(#rows == 0)
+		self:UpdateMiniMore()
+		return
+	end
 	local max = math.max(0, #rows - f.visible)
 	if f.offset > max then f.offset = max end
 	self:DrawMiniRows()
 end
 
+-- "Scroll for N more" under a ScrollBox list: rows after the last one in view.
+function GH:UpdateMiniMore()
+	local f = self.miniFrame
+	if not (f and f.scrollBox) then return end
+	local n = #(f.data or {})
+	local ok, last = pcall(f.scrollBox.GetDataIndexEnd, f.scrollBox)
+	last = ok and tonumber(last) or math.min(n, f.visible)
+	local below = n - last
+	f.more:SetText(below > 0 and L.MINI_MORE:format(below) or "")
+end
+
+-- Our own rows (only when the ScrollBox list isn't available).
 function GH:DrawMiniRows()
 	local f = self.miniFrame
+	if not f.rows then return end
 	local rows = f.data or {}
 	for i, r in ipairs(f.rows) do
 		local d = rows[i + f.offset]

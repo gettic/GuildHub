@@ -146,10 +146,12 @@ function GH:ShowSettingsTab(page)
 	if not self.settingsContainer then
 		RegisterPageType(AceGUI)
 		local c = AceGUI:Create(PAGE_TYPE)
-		c.frame:SetParent(page)
+		local host = page.inset or page -- the same inset as the status list (MainFrame.lua)
+		c.frame:SetParent(host)
 		c.frame:ClearAllPoints()
-		c.frame:SetAllPoints(page)
-		c.frame:SetFrameLevel((page:GetFrameLevel() or 0) + 1)
+		c.frame:SetPoint("TOPLEFT", host, "TOPLEFT", 4, -4)
+		c.frame:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -4, 4)
+		c.frame:SetFrameLevel((host:GetFrameLevel() or 0) + 2)
 		self.settingsContainer = c
 	end
 	local c = self.settingsContainer
@@ -159,7 +161,7 @@ end
 
 -- /ghub options and minimap right-click: the full window on the Settings tab.
 function GH:OpenOptions()
-	if self.db.profile.mini then self:SetMiniMode(false) end
+	if self.miniFrame and self.miniFrame:IsShown() then self.miniFrame:Hide() end
 	local f = self:CreateMainFrame()
 	f:Show()
 	self:ShowTab("settings")

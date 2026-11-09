@@ -20,7 +20,7 @@ local defaults = {
 		alerts = { lfg = true, help = true, muted = {} },
 		autoActivity = true,
 		inviteFallback = false, -- set for good if the game blocks InviteUnit from the addon
-		mini = false, -- mini mode: /ghub opens the small window instead of the full one
+		-- (beta.2/3 saved `mini` here; it is no longer read and does no harm)
 		miniWindow = { point = "TOPRIGHT", x = -220, y = -220 },
 	},
 	char = {

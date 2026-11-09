@@ -1,5 +1,6 @@
--- Guild Hub: the Status tab (search, sort, compact, member list, "Your status" panel, footer)
--- and the Whisper / Invite actions. Whisper and Invite only ever run from the player's own click.
+-- Guild Hub: the Status tab (search, Sort menu, "LFG only", member list, "Your status" panel,
+-- footer) and the Whisper / Invite actions. Whisper and Invite only ever run from the player's
+-- own click. Blizzard templates come through UI\Widgets.lua (each with a plain fallback).
 local _, ns = ...
 local GH, L, U = ns.GH, ns.L, ns.Util
 local W = ns.Widgets
@@ -9,13 +10,15 @@ local LIST_W = 778
 local SORTS = { "activity", "level", "zone", "rank", "name" }
 -- column x positions and widths inside a row
 local COL = {
-	-- status 140 px with the time right after it ("for 1 h 10 min" needs ~90 px), then GROUP
-	-- ("Yours", "3/5", "R 18"); actions stay at the right
-	name = { 8, 116 }, rank = { 128, 86 }, lvl = { 218, 30 }, zone = { 252, 120 }, status = { 376, 140 },
-	time = { 520, 92 }, group = { 616, 52 }, whisper = { 672, 58 }, invite = { 734, 44 },
+	-- one STATUS column (236 px): the time ("12 min") sits right-aligned in grey at its right end
+	-- and the status text gets the room the time doesn't need; then GROUP ("Yours", "3/5",
+	-- "R 18"); actions stay at the right
+	name = { 8, 116 }, rank = { 128, 86 }, lvl = { 218, 30 }, zone = { 252, 120 }, status = { 376, 236 },
+	group = { 616, 52 }, whisper = { 672, 58 }, invite = { 734, 44 },
 }
+local TIME_W, TIME_GAP = 70, 6 -- widest time ("10 h 59 min") and the gap before it
 local GROUP_TEXT_COLOR = { yours = { 0.45, 0.9, 0.45 }, solo = { 0.55, 0.55, 0.55 }, other = { 0.9, 0.9, 0.9 } }
-GH.STATUS_COLUMNS, GH.STATUS_LIST_W = COL, LIST_W -- for the offline test
+GH.STATUS_COLUMNS, GH.STATUS_LIST_W, GH.STATUS_TIME_W = COL, LIST_W, TIME_W -- for the offline test
 
 ------------------------------------------------------------------------
 -- Actions (clicks only)
@@ -76,16 +79,13 @@ end
 ------------------------------------------------------------------------
 -- Building the tab
 ------------------------------------------------------------------------
-local function MakeRow(parent)
-	local r = CreateFrame("Button", nil, parent)
-	r:SetSize(LIST_W, ROW_H - 2)
+-- Builds the parts of one row on frame r (our own row, or a ScrollBox row frame, built once).
+local function SetupRow(r)
+	r.ghRow = true
 	local bg = r:CreateTexture(nil, "BACKGROUND")
 	bg:SetAllPoints()
 	r.bg = bg
-	local hl = r:CreateTexture(nil, "HIGHLIGHT")
-	hl:SetAllPoints()
-	hl:SetColorTexture(1, 0.85, 0.4, 0.06)
-	r.hl = hl
+	r.hl = W.RowHighlight(r)
 	local function col(key, font, justify)
 		local fs = W.Text(r, font or "GameFontHighlight", nil, justify)
 		fs:SetPoint("LEFT", COL[key][1], 0)
@@ -97,15 +97,21 @@ local function MakeRow(parent)
 	r.lvl = col("lvl", "GameFontHighlight")
 	r.zone = col("zone", "GameFontHighlightSmall")
 	r.status = col("status", "GameFontHighlightSmall")
-	r.time = col("time", "GameFontDisableSmall")
+	-- the time: right-aligned at the right end of the STATUS column, grey
+	r.time = W.Text(r, "GameFontHighlightSmall", nil, "RIGHT")
+	r.time:SetPoint("RIGHT", r, "LEFT", COL.status[1] + COL.status[2], 0)
+	r.time:SetWidth(TIME_W)
+	r.time:SetTextColor(W.COLOR.gray[1], W.COLOR.gray[2], W.COLOR.gray[3])
 	r.group = col("group", "GameFontHighlightSmall")
 	r.header = W.Text(r, "GameFontNormal")
 	r.header:SetPoint("LEFT", 8, 0)
+	r.headerLine = W.HeaderLine(r, r.header)
 	r.whisper = W.Button(r, L.BTN_WHISPER, COL.whisper[2], 18)
 	r.whisper:SetPoint("LEFT", COL.whisper[1], 0)
 	r.whisper:SetScript("OnClick", function() GH:WhisperMember(r.member) end)
 	r.invite = W.Button(r, L.BTN_INVITE, COL.invite[2], 18)
 	r.invite:SetPoint("LEFT", COL.invite[1], 0)
+	if r.invite.SetMotionScriptsWhileDisabled then r.invite:SetMotionScriptsWhileDisabled(true) end -- tooltip on the grey button
 	r.invite:SetScript("OnClick", function(self)
 		if self.inGroup then return end -- already in our group (button is greyed out)
 		GH:InviteMember(r.member)
@@ -119,6 +125,12 @@ local function MakeRow(parent)
 	r.invite:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	r:SetScript("OnEnter", function(self) GH:MemberTooltip(self, self.data) end)
 	r:SetScript("OnLeave", function() GameTooltip:Hide() end)
+end
+
+local function MakeRow(parent)
+	local r = CreateFrame("Button", nil, parent)
+	r:SetSize(LIST_W, ROW_H - 2)
+	SetupRow(r)
 	return r
 end
 
@@ -157,6 +169,7 @@ local function FillRow(r, d)
 	r.whisper:SetShown(not isHeader and not d.isSelf)
 	r.invite:SetShown(not isHeader and not d.isSelf)
 	r.hl:SetShown(not isHeader)
+	if r.headerLine then r.headerLine:SetShown(isHeader) end
 	if isHeader then
 		local c = GH.GROUP_COLOR[d.header] or W.GOLD
 		r.header:SetText(("%s (%d)"):format(L.GROUP[d.header] or d.header, d.count))
@@ -180,7 +193,15 @@ local function FillRow(r, d)
 	r.zone:SetText(d.zone)
 	r.zone:SetTextColor(grey * 0.85, grey * 0.8, grey * 0.65)
 	r.status:SetText(d.status) -- cleaned text from others, never contains | codes
-	r.time:SetText(d.since and L.FOR_FMT:format(U.Duration(d.since)) or "")
+	-- short time ("12 min") at the right end; the status text gets the rest of the column
+	local t = d.since and U.Duration(d.since) or ""
+	r.time:SetText(t)
+	local tw = 0
+	if t ~= "" then
+		local sw = r.time:GetStringWidth()
+		tw = math.min(TIME_W, math.ceil(tonumber(sw) or TIME_W)) + TIME_GAP
+	end
+	r.status:SetWidth(COL.status[2] - tw)
 	local gText, gKind = GH:GroupText(d)
 	local gc = GROUP_TEXT_COLOR[gKind] or GROUP_TEXT_COLOR.other
 	r.group:SetText(gText)
@@ -189,30 +210,24 @@ local function FillRow(r, d)
 	local inGroup = d.inMyGroup == true
 	r.invite.inGroup = inGroup
 	r.invite:SetEnabled(not inGroup)
-	if inGroup then r.invite.label:SetTextColor(0.45, 0.45, 0.45) else r.invite:SetActive(false) end
+	r.invite:SetGreyed(inGroup)
 end
 
-function GH:BuildStatusTab(parent)
-	local tab = {}
-	self.statusTab = tab
-	tab.offset = 0
-	local db = self.db.profile
-
-	-- top bar: search, sort, compact
-	local search = W.EditBox(parent, 330, 24, 40, L.SEARCH_HINT)
-	search:SetPoint("TOPLEFT", 8, -6)
-	search:SetScript("OnEnterPressed", function(s) s:ClearFocus() end)
-	search:SetScript("OnEscapePressed", function(s) -- Esc empties the search and shows everyone again
-		s:SetText("")
-		s:ClearFocus()
-		tab.offset = 0
-		GH:DrawStatusTab()
-	end)
-	search:HookScript("OnTextChanged", function() tab.offset = 0; GH:DrawStatusTab() end)
-	tab.search = search
-
+-- Sort: a WowStyle1Dropdown menu (pick one), else the old button (left-click next, right-click back).
+local function MakeSort(parent, tab, db)
+	local dd = W.Dropdown(parent, 150)
+	if dd then
+		dd:SetupMenu(function(_, root)
+			for _, key in ipairs(SORTS) do
+				root:CreateRadio(L.SORT[key] or key, function() return db.sort == key end, function()
+					db.sort = key
+					GH:DrawStatusTab()
+				end)
+			end
+		end)
+		return dd
+	end
 	local sort = W.Button(parent, "", 130, 24)
-	sort:SetPoint("LEFT", search, "RIGHT", 10, 0)
 	sort:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 	sort:SetScript("OnClick", function(_, button)
 		local i = 1
@@ -222,46 +237,23 @@ function GH:BuildStatusTab(parent)
 		GH:DrawStatusTab()
 	end)
 	W.Tooltip(sort, L.SORT_TIP)
-	tab.sort = sort
+	return sort
+end
 
-	local compact = W.Button(parent, L.COMPACT, 140, 24)
-	compact:SetPoint("LEFT", sort, "RIGHT", 10, 0)
-	compact:SetScript("OnClick", function()
-		db.compact = not db.compact
-		tab.offset = 0
-		GH:DrawStatusTab()
-	end)
-	W.Tooltip(compact, L.COMPACT_TIP)
-	tab.compact = compact
-
-	-- column titles
-	local heads = {
-		{ "name", L.COL_NAME }, { "rank", L.COL_RANK }, { "lvl", L.COL_LVL }, { "zone", L.COL_ZONE }, { "status", L.COL_STATUS },
-		{ "time", L.COL_TIME }, { "group", L.COL_GROUP }, { "whisper", L.COL_ACTIONS },
-	}
-	for _, h in ipairs(heads) do
-		local fs = W.Text(parent, "GameFontDisableSmall", h[2])
-		fs:SetPoint("TOPLEFT", 8 + COL[h[1]][1], -40)
-	end
-
-	-- the list
-	local list = CreateFrame("Frame", nil, parent)
-	list:SetPoint("TOPLEFT", 8, -56)
-	list:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 8, 30)
-	list:SetWidth(LIST_W + 12)
+-- The old list: our own rows and slider (used when the ScrollBox templates are missing).
+local function MakePlainList(tab, listArea)
+	local list = CreateFrame("Frame", nil, listArea)
+	list:SetAllPoints(listArea)
 	list:EnableMouseWheel(true)
 	tab.list = list
 	tab.rows = {}
-	local visible = math.floor((456 - 56 - 30) / ROW_H)
+	local visible = math.floor(tab.listHeight / ROW_H)
 	for i = 1, visible do
 		local r = MakeRow(list)
 		r:SetPoint("TOPLEFT", 0, -(i - 1) * ROW_H)
 		tab.rows[i] = r
 	end
 	tab.visible = visible
-	tab.empty = W.Text(list, "GameFontDisable", L.EMPTY_LIST)
-	tab.empty:SetPoint("TOP", 0, -40)
-
 	local bar = CreateFrame("Slider", nil, list)
 	bar:SetOrientation("VERTICAL")
 	bar:SetWidth(8)
@@ -288,6 +280,86 @@ function GH:BuildStatusTab(parent)
 		local _, max = bar:GetMinMaxValues()
 		bar:SetValue(math.max(0, math.min(max, tab.offset - delta * 3)))
 	end)
+end
+
+function GH:BuildStatusTab(parent)
+	local tab = {}
+	self.statusTab = tab
+	tab.offset = 0
+	local db = self.db.profile
+
+	-- top bar: search, sort, "LFG only"
+	local search = W.EditBox(parent, 330, 22, 40, L.SEARCH_HINT, "search")
+	search:SetPoint("TOPLEFT", 10, -6)
+	-- the search box template has its own scripts (clear button, hint): ours are hooked on
+	search:HookScript("OnEnterPressed", function(s) s:ClearFocus() end)
+	search:HookScript("OnEscapePressed", function(s) -- Esc empties the search and shows everyone again
+		s:SetText("")
+		s:ClearFocus()
+		tab.offset, tab.toTop = 0, true
+		GH:DrawStatusTab()
+	end)
+	search:HookScript("OnTextChanged", function() tab.offset, tab.toTop = 0, true; GH:DrawStatusTab() end)
+	tab.search = search
+
+	local sort = MakeSort(parent, tab, db)
+	sort:SetPoint("LEFT", search, "RIGHT", 12, 0)
+	tab.sort = sort
+
+	local compact = W.CheckButton(parent, L.LFG_ONLY, 100)
+	compact:SetPoint("LEFT", sort, "RIGHT", 12, 0)
+	compact:SetScript("OnClick", function()
+		db.compact = not db.compact
+		tab.offset, tab.toTop = 0, true
+		GH:DrawStatusTab()
+	end)
+	W.Tooltip(compact, L.COMPACT_TIP)
+	tab.compact = compact
+
+	-- the list sits in an inset with the column titles at its top
+	local inset = W.Inset(parent)
+	inset:SetPoint("TOPLEFT", 2, -34)
+	inset:SetPoint("BOTTOMLEFT", 2, 24)
+	inset:SetWidth(LIST_W + 20)
+	tab.listInset = inset
+	local heads = {
+		{ "name", L.COL_NAME }, { "rank", L.COL_RANK }, { "lvl", L.COL_LVL }, { "zone", L.COL_ZONE }, { "status", L.COL_STATUS },
+		{ "group", L.COL_GROUP }, { "whisper", L.COL_ACTIONS },
+	}
+	local headBar = CreateFrame("Frame", nil, inset) -- own frame: above the inset's border art
+	headBar:SetAllPoints(inset)
+	for _, h in ipairs(heads) do
+		local fs = W.Text(headBar, "GameFontDisableSmall", h[2])
+		fs:SetPoint("TOPLEFT", inset, "TOPLEFT", 6 + COL[h[1]][1], -6)
+	end
+	local timeHead = W.Text(headBar, "GameFontDisableSmall", L.COL_TIME, "RIGHT")
+	timeHead:SetPoint("TOPRIGHT", inset, "TOPLEFT", 6 + COL.status[1] + COL.status[2], -6)
+
+	local listArea = CreateFrame("Frame", nil, inset)
+	listArea:SetPoint("TOPLEFT", 6, -22)
+	listArea:SetPoint("BOTTOMLEFT", 6, 4)
+	listArea:SetWidth(LIST_W + 12)
+	tab.listArea = listArea
+	tab.listHeight = 456 - 34 - 24 - 22 - 4 -- page height minus the parts above and below
+
+	-- Blizzard's ScrollBox list (rows are reused while scrolling), else our own rows + slider
+	local box, sbar = W.ScrollList(listArea, ROW_H, function(r, d)
+		if not r.ghRow then SetupRow(r) end
+		FillRow(r, d)
+	end)
+	if box then
+		box:SetPoint("TOPLEFT", 0, 0)
+		box:SetPoint("BOTTOMLEFT", 0, 0)
+		box:SetWidth(LIST_W)
+		sbar:SetPoint("TOPLEFT", box, "TOPRIGHT", 4, 0)
+		sbar:SetPoint("BOTTOMLEFT", box, "BOTTOMRIGHT", 4, 0)
+		tab.scrollBox, tab.scrollBar = box, sbar
+		tab.list = box
+	else
+		MakePlainList(tab, listArea)
+	end
+	tab.empty = W.Text(listArea, "GameFontDisable", L.EMPTY_LIST)
+	tab.empty:SetPoint("TOP", 0, -40)
 
 	-- footer
 	tab.footer = W.Text(parent, "GameFontDisableSmall")
@@ -322,10 +394,9 @@ end
 ------------------------------------------------------------------------
 function GH:BuildOwnPanel(parent)
 	local tab = self.statusTab
-	local panel = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-	panel:SetPoint("TOPLEFT", LIST_W + 22, -2)
-	panel:SetPoint("BOTTOMRIGHT", -2, 2)
-	W.Skin(panel, 0.5, 0.1, 0.08, 0.05)
+	local panel = W.Inset(parent)
+	panel:SetPoint("TOPLEFT", LIST_W + 26, -34)
+	panel:SetPoint("BOTTOMRIGHT", -2, 24)
 	tab.panel = panel
 
 	local title = W.Text(panel, "GameFontNormalLarge", L.YOUR_STATUS)
@@ -338,7 +409,7 @@ function GH:BuildOwnPanel(parent)
 		local col, row = (i - 1) % 2, math.floor((i - 1) / 2)
 		b:SetPoint("TOPLEFT", 12 + col * 104, -40 - row * 26)
 		b:SetScript("OnClick", function()
-			if GH.dungeonPicker then GH.dungeonPicker:Hide() end
+			GH:HideDungeonPicker()
 			tab.note:ClearFocus()
 			GH:SetPreset(p)
 			GH:UpdateOwnPanel(true) -- the note box follows (cleared when switching presets)
@@ -346,20 +417,16 @@ function GH:BuildOwnPanel(parent)
 		tab.chips[p] = b
 	end
 
-	local dung = W.Button(panel, "", 206, 22)
-	dung:SetPoint("TOPLEFT", 12, -124)
-	dung:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-	dung:SetScript("OnClick", function(_, button)
-		if button == "RightButton" then
-			if GH.dungeonPicker then GH.dungeonPicker:Hide() end
-		else
-			GH:ToggleDungeonPicker(dung)
-		end
-	end)
-	tab.dungeon = dung
+	tab.dungeon = self:MakeDungeonPicker(panel)
+	tab.dungeon:SetPoint("TOPLEFT", 12, -124)
 
 	local note = W.EditBox(panel, 206, 24, self.NOTE_LETTERS, L.NOTE_HINT)
-	note:SetPoint("TOPLEFT", 12, -152)
+	if note.ghTemplate then -- the input box art reaches 5 px past its left edge
+		note:SetWidth(198)
+		note:SetPoint("TOPLEFT", 18, -154)
+	else
+		note:SetPoint("TOPLEFT", 12, -152)
+	end
 	note:SetScript("OnEnterPressed", function(s)
 		GH:SetStatusText(s:GetText())
 		s:ClearFocus()
@@ -381,7 +448,7 @@ function GH:BuildOwnPanel(parent)
 	tab.clearsIn:SetPoint("TOPLEFT", 14, -194)
 	tab.clearsIn:SetWidth(204)
 
-	local lasts = W.Button(panel, "", 100, 20)
+	local lasts = W.Button(panel, "", 100, 22)
 	lasts:SetPoint("TOPLEFT", 12, -212)
 	lasts:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 	lasts:SetScript("OnClick", function(_, button)
@@ -396,7 +463,7 @@ function GH:BuildOwnPanel(parent)
 	lasts:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	tab.lasts = lasts
 
-	local clear = W.Button(panel, L.BTN_CLEAR, 60, 20)
+	local clear = W.Button(panel, L.BTN_CLEAR, 64, 22)
 	clear:SetPoint("TOPRIGHT", panel, "TOPLEFT", 216, -212)
 	clear:SetScript("OnClick", function()
 		tab.note:SetText("")
@@ -406,11 +473,63 @@ function GH:BuildOwnPanel(parent)
 	tab.clear = clear
 
 	tab.autoAct = W.Text(panel, "GameFontHighlightSmall")
-	tab.autoAct:SetPoint("TOPLEFT", 14, -244)
+	tab.autoAct:SetPoint("TOPLEFT", 14, -246)
 	tab.autoAct:SetWidth(206)
 end
 
+local function DungeonLabel(i)
+	local e = GH.DUNGEONS[i]
+	if not e then return L.LFG_ANY end
+	if e.min == e.max then return ("%s (%d)"):format(e.name, e.min) end
+	return ("%s (%d-%d)"):format(e.name, e.min, e.max)
+end
+
+-- The Dungeon picker: a WowStyle1Dropdown menu (2 columns when this client's menus can do a grid,
+-- else one list that scrolls), or the old button + our own 2-column list.
+function GH:MakeDungeonPicker(panel)
+	local dd = W.Dropdown(panel, 206)
+	if dd then
+		dd:SetupMenu(function(_, root)
+			local grid = root.SetGridMode and MenuConstants and MenuConstants.VerticalGridDirection
+			if not (grid and pcall(root.SetGridMode, root, MenuConstants.VerticalGridDirection, 2)) then
+				if root.SetScrollMode then pcall(root.SetScrollMode, root, 400) end
+			end
+			for i = 0, #GH.DUNGEONS do
+				root:CreateRadio(DungeonLabel(i), function()
+					local own = GH:GetOwnStatus() or {}
+					return (own.d or 0) == i
+				end, function()
+					GH:SetLfgDungeon(i)
+					GH:UpdateOwnPanel()
+				end)
+			end
+		end)
+		return dd
+	end
+	local dung = W.Button(panel, "", 206, 22)
+	dung:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+	dung:SetScript("OnClick", function(_, button)
+		if button == "RightButton" then
+			GH:HideDungeonPicker()
+		else
+			GH:ToggleDungeonPicker(dung)
+		end
+	end)
+	return dung
+end
+
+-- Closes the dungeon list (our own list, or the dropdown's menu).
+function GH:HideDungeonPicker()
+	if self.dungeonPicker then self.dungeonPicker:Hide() end
+	local dd = self.statusTab and self.statusTab.dungeon
+	if dd and dd.isDropdown then pcall(dd.CloseMenuIfOpen, dd) end
+end
+
 function GH:ToggleDungeonPicker(anchor)
+	if anchor and anchor.isDropdown then -- the dropdown opens its own menu
+		if anchor:IsMenuOpen() then anchor:CloseMenu() else anchor:OpenMenu() end
+		return
+	end
 	local pick = self.dungeonPicker
 	if not pick then
 		pick = CreateFrame("Frame", nil, self.mainFrame, "BackdropTemplate")
@@ -420,10 +539,7 @@ function GH:ToggleDungeonPicker(anchor)
 		local perCol = math.ceil(n / 2)
 		pick:SetSize(2 * 196 + 12, perCol * 18 + 12)
 		for i = 0, #self.DUNGEONS do
-			local e = self.DUNGEONS[i]
-			local label = e and ("%s (%d-%d)"):format(e.name, e.min, e.max) or L.LFG_ANY
-			if e and e.min == e.max then label = ("%s (%d)"):format(e.name, e.min) end
-			local b = W.Button(pick, label, 192, 17)
+			local b = W.PlainButton(pick, DungeonLabel(i), 192, 17)
 			b:SetBackdropBorderColor(0, 0, 0, 0)
 			b.label:ClearAllPoints()
 			b.label:SetPoint("LEFT", 6, 0)
@@ -455,9 +571,9 @@ function GH:UpdateOwnPanel(resetNote)
 	local fresh = self:IsStatusFresh(own)
 	for p, b in pairs(tab.chips) do b:SetActive(fresh and own.p == p) end
 	local lfg = fresh and own.p == "lfg"
+	if not lfg then self:HideDungeonPicker() end
 	tab.dungeon:SetShown(lfg)
 	if lfg then tab.dungeon:SetLabel(L.DUNGEON_FMT:format(self:DungeonName(own.d))) end
-	if not lfg and self.dungeonPicker then self.dungeonPicker:Hide() end
 	-- Refresh the box only if the player hasn't typed something unsent into it (the regular redraws
 	-- must never wipe typing; the "Press Enter to share" hint covers that case).
 	local typed = tab.note:GetText()
@@ -468,7 +584,7 @@ function GH:UpdateOwnPanel(resetNote)
 	self:UpdateNoteHint()
 	tab.lasts:SetLabel(L.LASTS_FMT:format(self:OwnHours()))
 	tab.lasts:SetEnabled(fresh) -- nothing to apply it to without a status
-	tab.lasts:SetAlpha(fresh and 1 or 0.45)
+	if tab.lasts.plain then tab.lasts:SetAlpha(fresh and 1 or 0.45) end -- the red button greys itself
 	if fresh and own.st then
 		tab.clearsIn:SetText(L.CLEARS_IN:format(U.Duration(math.max(0, self:StatusDuration(own) - (U.Now() - own.st)))))
 	else
@@ -506,17 +622,27 @@ function GH:DrawStatusTab()
 	})
 	tab.data = rows
 	tab.footer:SetText(L.FOOTER:format(online, withAddon))
-	local max = math.max(0, #rows - tab.visible)
-	if tab.offset > max then tab.offset = max end
-	tab.bar:SetMinMaxValues(0, max)
-	tab.bar:SetValue(tab.offset)
-	tab.bar:SetShown(max > 0)
-	self:DrawRows()
+	if tab.scrollBox then
+		-- the ScrollBox reuses its row frames; stay in place unless the search/filter changed
+		W.SetListData(tab.scrollBox, rows, not tab.toTop)
+		tab.toTop = nil
+		tab.empty:SetShown(#rows == 0)
+	else
+		tab.toTop = nil
+		local max = math.max(0, #rows - tab.visible)
+		if tab.offset > max then tab.offset = max end
+		tab.bar:SetMinMaxValues(0, max)
+		tab.bar:SetValue(tab.offset)
+		tab.bar:SetShown(max > 0)
+		self:DrawRows()
+	end
 	self:UpdateOwnPanel()
 end
 
+-- Our own rows (only when the ScrollBox list isn't available).
 function GH:DrawRows()
 	local tab = self.statusTab
+	if not tab.rows then return end
 	local rows = tab.data or {}
 	for i, r in ipairs(tab.rows) do
 		local d = rows[i + tab.offset]
