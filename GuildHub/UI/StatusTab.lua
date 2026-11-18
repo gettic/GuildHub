@@ -149,6 +149,8 @@ function GH:MemberTooltip(owner, d, hint)
 	if d.instFull and d.instFull ~= d.instShort then GameTooltip:AddLine(d.instFull, 0.75, 0.55, 1) end
 	local _, _, grpTip = GH:GroupText(d)
 	if grpTip then GameTooltip:AddLine(grpTip, 0.6, 0.85, 1) end
+	local profLine = GH.ProfLine and GH:ProfLine(d.name) -- Professions.lua
+	if profLine then GameTooltip:AddLine(profLine, 0.55, 0.8, 1, true) end
 	if not d.noAddon and d.since then
 		if d.left then
 			GameTooltip:AddLine(L.TIP_FOR_CLEARS:format(U.Duration(d.since), U.Duration(d.left)), 0.7, 0.7, 0.7)

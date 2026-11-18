@@ -87,23 +87,48 @@ function U.CleanText(s, maxLen)
 	return s
 end
 
+-- "X.Y.Z" (release) or "X.Y.Z-tag[.N]" (pre-release, e.g. "0.2.0-beta.6") ->
+-- { X, Y, Z }, tag or nil, N or 0. Anything else -> nil.
+local function ParseVersion(v)
+	if type(v) ~= "string" then return nil end
+	local a, b, c, rest = strmatch(v, "^(%d+)%.(%d+)%.(%d+)(.*)$")
+	if not a then return nil end
+	local tag, num
+	if rest ~= "" then
+		tag, num = strmatch(rest, "^%-(%a+)%.?(%d*)$")
+		if not tag then return nil end
+	end
+	return { tonumber(a), tonumber(b), tonumber(c) }, tag and tag:lower() or nil, tonumber(num) or 0
+end
+
 function U.ValidVersion(v)
 	if type(v) ~= "string" or #v > 16 then return nil end
-	if not strmatch(v, "^%d+%.%d+%.%d+$") then return nil end
+	if not ParseVersion(v) then return nil end
 	return v
 end
 
--- -1 if a < b, 0 if equal, 1 if a > b
+-- true for a pre-release ("0.2.0-beta.6")
+function U.IsPreRelease(v)
+	local x, tag = ParseVersion(v)
+	return x ~= nil and tag ~= nil
+end
+
+-- -1 if a < b, 0 if equal, 1 if a > b. A release beats its pre-releases (0.2.0 > 0.2.0-beta.6);
+-- pre-releases: alpha < beta < rc (name order), then the number (beta.10 > beta.9).
 function U.CompareVersions(a, b)
-	local a1, a2, a3 = strmatch(a or "", "^(%d+)%.(%d+)%.(%d+)$")
-	local b1, b2, b3 = strmatch(b or "", "^(%d+)%.(%d+)%.(%d+)$")
-	if not a1 or not b1 then return 0 end
-	local x = { tonumber(a1), tonumber(a2), tonumber(a3) }
-	local y = { tonumber(b1), tonumber(b2), tonumber(b3) }
+	local x, xt, xn = ParseVersion(a)
+	local y, yt, yn = ParseVersion(b)
+	if not x or not y then return 0 end
 	for i = 1, 3 do
 		if x[i] < y[i] then return -1 elseif x[i] > y[i] then return 1 end
 	end
-	return 0
+	if xt == yt then
+		if xn < yn then return -1 elseif xn > yn then return 1 end
+		return 0
+	end
+	if not xt then return 1 end
+	if not yt then return -1 end
+	return xt < yt and -1 or 1
 end
 
 function U.ValidNumber(n, lo, hi)

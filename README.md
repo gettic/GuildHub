@@ -9,8 +9,10 @@ A guild hub for WoW Forever that lets guildmates see what everyone is doing, whe
 - A status board: a window that shows what every online guildmate is doing.
 - Your own status: pick one, add a short note, and your guild sees it.
 - Small alerts when a guildmate near your level looks for a group, or someone asks for help.
+- A Professions tab: who has which profession, and who can make an item.
+- A "crafted by" line in item tooltips.
 
-Planned next: professions and a guild map. They are not built yet.
+Planned next: a guild map. It is not built yet.
 
 ## Status board
 
@@ -30,6 +32,16 @@ Type `/ghub` or click the Guild Hub minimap button to open it. It lists every on
 
 If the game blocks the Invite button, Guild Hub puts `/invite Name` in your chat box. Press Enter to send it.
 
+## Professions
+
+Click the Professions tab to see which guildmates have which profession and how high their skill is. Use the recipe search to ask "who can make X?". The Request button writes a polite whisper into your chat box. You press Enter yourself: Guild Hub never sends it for you. A quiet feed shows rare recipes that guildmates learned.
+
+Open each of your profession windows once, so Guild Hub can read your recipes.
+
+**Tooltips.** Item tooltips get one extra line, "Guild Hub: crafted by ...", when a guildmate can make the item. It never shows in combat. You can turn it off in the settings.
+
+**Privacy.** "Share my professions" in the settings is on by default. Turning it off tells the guild to forget your professions. Guild Hub only fetches recipe lists after you first use the Professions tab, the search or a tooltip, and sends them slowly to keep the chat channel free. Professions of players who leave the guild are deleted.
+
 ## Install
 
 Copy the `GuildHub` folder into your WoW `AddOns` folder, then restart the game or reload the UI. Everyone in the guild needs the addon to see each other.
@@ -40,23 +52,29 @@ Copy the `GuildHub` folder into your WoW `AddOns` folder, then restart the game 
 |---|---|
 | `/ghub` | Open or close the status board |
 | `/ghub help` | Show the list of commands |
-| `/ghub status` | Show who has Guild Hub and which version |
+| `/ghub status` | Show who has Guild Hub and which version (beta testers too) |
 | `/ghub options` | Open Settings |
+| `/ghub selftest` | Check the window and saved data; shows one line to copy and send to the author (no names in it). `/ghub selftest full` also checks the Professions tab |
 | `/ghub debug` | Show addon messages |
 | `/ghub test big` | Run a test of splitting a long message |
 | `/ghub test activity` | Show what Guild Hub thinks you are doing |
 | `/ghub test expire` | Make your status run out |
 | `/ghub test ui` | Show which Blizzard art your game gave the window |
+| `/ghub test prof` | Show what Guild Hub knows about your own professions |
 
 ## Settings
 
-Click the gear button in the title bar of the `/ghub` window (left of the "-"), or use `/ghub options` or the minimap button's right-click. Click the gear again to go back to Status. The same settings are in Esc > Options > AddOns > Guild Hub. There you can switch off automatic activity, sharing your group size and the notes, unmute players, show or hide guildmates without Guild Hub, and hide the minimap button. The Guild Master sets which ranks count as officers.
+Click the gear button in the title bar of the `/ghub` window (left of the "-"), or use `/ghub options` or the minimap button's right-click. Click the gear again to go back to Status. The same settings are in Esc > Options > AddOns > Guild Hub. There you can switch off automatic activity, sharing your group size, sharing your professions, the "crafted by" tooltip line and the notes, unmute players, show or hide guildmates without Guild Hub, and hide the minimap button. The Guild Master sets which ranks count as officers.
 
 ## Good to know
 
 - Trial and Veteran trial accounts can receive data but not send it.
 - Data of members not seen for 90 days is deleted.
 - Works with WoW Forever character names such as "Mira Ashford".
+- Guildmates who use Guild Hub show as such within a few seconds after you log in.
+- On narrow screens or with a large UI scale, the window shrinks to fit.
+- A damaged settings file no longer causes an error: bad settings go back to their defaults and your guild data is kept.
+- Beta versions are understood. Players on a normal release are only told about newer normal releases.
 
 ## For people who change the code
 
@@ -72,11 +90,14 @@ The addon lives in `GuildHub\`. Files are loaded in this order (see `GuildHub_Fo
 | `Comm.lua` | Sending and receiving addon messages |
 | `Sync.lua` | Syncing data between guildmates |
 | `Status.lua` | Status logic: presets, activity, alerts, board rows |
+| `Professions.lua` | Professions: reading recipes, sharing them, search, tooltip line |
 | `UI\Widgets.lua` | Buttons, text boxes and the alert note |
 | `UI\MainFrame.lua` | The window, the Status tab, the gear button and the minimap button |
 | `UI\StatusTab.lua` | The status board tab |
+| `UI\ProfessionsTab.lua` | The Professions tab |
 | `UI\MiniFrame.lua` | The small mini mode window |
 | `Options.lua` | Settings (the Settings page in the window and the Options page) |
+| `SelfTest.lua` | The `/ghub selftest` check |
 
 ## Credits
 

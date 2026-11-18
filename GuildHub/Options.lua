@@ -75,6 +75,20 @@ local function BuildOptions()
 				get = function() return GH.db.profile.minimap.hide end,
 				set = function(_, v) GH.db.profile.minimap.hide = v; GH:UpdateMinimapButton() end,
 			},
+			profHeader = { type = "header", order = 19.2, name = L.OPT_PROF_HDR },
+			shareProf = {
+				type = "toggle", order = 19.3, width = "full",
+				name = L.OPT_SHAREPROF, desc = L.OPT_SHAREPROF_DESC,
+				get = function() return GH:SharesProfessions() end,
+				set = function(_, v) GH:SetShareProfessions(v); GH:RefreshProfTab() end,
+			},
+			shareProfInfo = { type = "description", order = 19.4, name = L.OPT_SHAREPROF_DESC },
+			profTooltip = {
+				type = "toggle", order = 19.5, width = "full",
+				name = L.OPT_PROFTIP, desc = L.OPT_PROFTIP_DESC,
+				get = function() return GH.db.profile.profTooltip end,
+				set = function(_, v) GH.db.profile.profTooltip = v end,
+			},
 			officerHeader = { type = "header", order = 20, name = L.OPT_OFFICER_HDR },
 			officerInfo = {
 				type = "description", order = 21,

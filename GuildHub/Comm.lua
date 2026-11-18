@@ -21,9 +21,12 @@ local MIN_INTERVAL = {
 	GRP     = 15, -- group size; also waits for 2 s without roster changes (Status.lua)
 	SYNCING = 0,
 	SYNC    = 0,
+	PROF    = 60, -- professions summary (tos check: at most one per minute)
+	RREQ    = 3,  -- recipe list request (per target)
+	RLIST   = 0,  -- recipe list answers: paced in Professions.lua (bytes per second)
 }
 -- Kept and sent later when a boss fight / PvP match blocks messages.
-local KEEP_IN_LOCKDOWN = { HELLO = true, HB = true, CFG = true, STATUS = true, GRP = true }
+local KEEP_IN_LOCKDOWN = { HELLO = true, HB = true, CFG = true, STATUS = true, GRP = true, PROF = true }
 
 local MAX_INCOMING = 30000 -- characters; anything bigger is dropped
 
@@ -126,6 +129,7 @@ function GH:OnSendFailed(info)
 		why = "the game refused it"
 	end
 	self:Debug("|cffff6060%s was NOT sent: %s|r", info.mtype, why)
+	if self.OnProfSendFailed then self:OnProfSendFailed(info) end -- recipe lists back off
 end
 
 function GH:SendHeld(key)
@@ -243,7 +247,9 @@ function GH:NoteVersion(sender, version)
 	if not version then return end
 	local u = self.addonUsers[sender]
 	if u then u.version = version end
-	if not self.updateNoted and U.CompareVersions(version, self.VERSION) > 0 then
+	-- players on a normal release are only told about newer releases, not about someone's beta
+	local worthNoting = not U.IsPreRelease(version) or U.IsPreRelease(self.VERSION)
+	if not self.updateNoted and worthNoting and U.CompareVersions(version, self.VERSION) > 0 then
 		self.updateNoted = true
 		self:Msg(L.UPDATE_AVAILABLE, version, self.VERSION)
 	end

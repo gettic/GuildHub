@@ -161,3 +161,66 @@ L.T_MINUTES         = "%d min"
 L.T_HOURS_MIN       = "%d h %d min"
 L.T_LESS_MIN        = "<1 min"
 L.T_JUSTNOW         = "less than a minute"
+
+-- Professions (step 3)
+L.TAB_PROF          = "Professions"
+L.WIN_SUB_PROF      = "/ghub · who can craft what"
+L.HELP_TEST4        = "  /ghub test prof - show what the game tells Guild Hub about your professions (open a profession window first)"
+L.HELP_SELFTEST     = "  /ghub selftest - Guild Hub checks its own window and data and shows one line to copy (selftest full: all tabs)"
+L.PROF = {
+	alch = "Alchemy", bs = "Blacksmithing", ench = "Enchanting", eng = "Engineering", lw = "Leatherworking",
+	tail = "Tailoring", jc = "Jewelcrafting", insc = "Inscription", herb = "Herbalism", mine = "Mining",
+	skin = "Skinning", fish = "Fishing", cook = "Cooking", aid = "First Aid", arch = "Archaeology",
+}
+L.SPEC = { -- only used if the game doesn't name the spell
+	[9787] = "Weaponsmith", [9788] = "Armorsmith", [17039] = "Master Swordsmith", [17040] = "Master Hammersmith",
+	[17041] = "Master Axesmith", [20219] = "Gnomish Engineer", [20222] = "Goblin Engineer",
+	[10656] = "Dragonscale", [10658] = "Elemental", [10660] = "Tribal",
+}
+L.PROF_FILTER = {
+	all = "All", alch = "Alchemy", bs = "Blacksmithing", ench = "Enchanting", eng = "Engineering",
+	lw = "Leatherworking", tail = "Tailoring", cook = "Cooking", aid = "First Aid", gather = "Gathering and Fishing",
+}
+L.PROF_FILTER_FMT   = "Profession: %s"
+L.PROF_FILTER_TIP   = "Show one profession only."
+L.PROF_ONLINE_ONLY  = "Online only"
+L.PROF_SEARCH_HINT  = "Search item or recipe"
+L.PCOL_CRAFTER, L.PCOL_PROF, L.PCOL_SKILL, L.PCOL_SPEC = "CRAFTER", "PROFESSION", "SKILL", "SPECIALIZATION"
+L.PCOL_RECIPES, L.PCOL_SEEN, L.PCOL_RECIPE, L.PCOL_CRAFTERS = "RECIPES", "SEEN", "RECIPE", "CAN MAKE IT"
+L.PROF_ONLINE       = "online"
+L.PROF_OFFLINE      = "offline"
+L.PROF_EMPTY        = "No professions known yet. Guildmates with Guild Hub share theirs when they log in; recipes appear once each crafter has opened their profession window."
+L.PROF_NO_MATCH     = "Nobody in the guild is known to make that yet."
+L.PROF_YOURS        = "Your professions"
+L.PROF_FEED         = "Rare recipes learned"
+L.PROF_FEED_NONE    = "None yet."
+L.PROF_FEED_LINE    = "%s learned %s |cff999999(%s ago)|r"
+L.PROF_GATHER       = "gathering: skill only"
+L.PROF_SHARED       = "%d recipes shared · scanned %s ago"
+L.PROF_OPEN_WINDOW  = "Open its window once to share your recipes."
+L.PROF_NONE_OWN     = "You have no professions (or the game hasn't told us yet)."
+L.PROF_NOT_SHARING  = "Sharing is off (Settings)."
+L.PROF_FOOTER       = "%d crafters · %d recipes known in the guild"
+L.PROF_FOOTER_RIGHT = "Offline crafters are shown from saved data"
+L.PROF_MATS         = "Materials: %s"
+L.PROF_CAN_MAKE     = "Can make it:"
+L.PROF_UPDATING     = "recipe list is being updated"
+L.PROF_LINE         = "Professions: %s"
+L.TIP_CRAFTERS      = "Guild Hub: crafted by %s"
+L.TIP_MORE          = " +%d"
+L.BTN_REQUEST       = "Request"
+L.REQ_HINT          = "Click an online crafter: your chat box opens with a request. Press Enter to send it."
+L.REQ_MATS_CHECK    = "I bring the mats"
+L.REQ_TEXT          = "Hi! Could you craft %s for me?"
+L.REQ_MATS          = "I'll bring the mats."
+L.OPT_PROF_HDR      = "Professions"
+L.OPT_SHAREPROF     = "Share my professions"
+L.OPT_SHAREPROF_DESC = "Shares your professions, skill and known recipes with guildmates who have Guild Hub (they can pass them on while you are offline). Turning it off tells them to drop your data."
+L.OPT_PROFTIP       = "Show guild crafters in item tooltips"
+L.OPT_PROFTIP_DESC  = "Adds one line \"Guild Hub: crafted by ...\" to item tooltips (never in combat)."
+L.SELFTEST_OK       = "self-test OK (%d checks). Copy the line and paste it to whoever asked."
+L.SELFTEST_PROBLEMS = "self-test found %d problem(s) in %d checks. Copy the line and send it."
+L.SELFTEST_STOPPED  = "self-test stopped (combat). Nothing was changed."
+L.SELFTEST_WAIT     = "self-test waits until combat ends."
+L.SELFTEST_RUNNING  = "self-test is already running."
+L.TEST_PROF         = "professions: %s · window %s · learned %s of %s · output item %s · materials %s · source %s · specs %s · tooltip hook %s · spell names %s"

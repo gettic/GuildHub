@@ -10,11 +10,13 @@ local PAGE_TOP = -56 -- the pages (and their insets) start here
 -- pages: sub = Locale key of the subtitle. Settings has no tab: the gear button in the title bar.
 local PAGES = {
 	{ key = "status", sub = "WIN_SUB" },
+	{ key = "professions", sub = "WIN_SUB_PROF" },
 	{ key = "settings", sub = "WIN_SUB_SETTINGS" },
 }
--- tabs (label = Locale key), left to right from the left edge; Professions, Map ... come later
+-- tabs (label = Locale key), left to right from the left edge; Map ... comes later
 local TABS = {
 	{ key = "status", label = "TAB_STATUS" },
+	{ key = "professions", label = "TAB_PROF" },
 }
 
 function GH:SaveWindowPos()
@@ -22,7 +24,9 @@ function GH:SaveWindowPos()
 	if not f then return end
 	local point, _, _, x, y = f:GetPoint(1)
 	local w = self.db.profile.window
-	w.point, w.x, w.y = point or "CENTER", x or 0, y or 0
+	-- saved in UIParent units (offset x scale), so a shrunk window (FitToScreen) keeps its place
+	local s = f:GetScale() or 1
+	w.point, w.x, w.y = point or "CENTER", (x or 0) * s, (y or 0) * s
 end
 
 -- The window frame: Blizzard's ButtonFrameTemplate (portrait hidden, title "Guild Hub", its own
@@ -113,6 +117,28 @@ local function MakeGear(f, mini)
 	f.gearButton = gear
 end
 
+-- Narrow screens (4:3, 5:4) or a big UI scale: UIParent can be narrower than the window. Then the
+-- whole window is scaled down to fit (layout unchanged); 1 on normal screens. Never in combat.
+local MIN_SCALE, SCREEN_MARGIN = 0.7, 20
+local function FitToScreen(f)
+	if InCombatLockdown and InCombatLockdown() then
+		GH.fitAfterCombat = true
+		return
+	end
+	local sw, sh = UIParent:GetWidth(), UIParent:GetHeight()
+	if type(sw) ~= "number" or type(sh) ~= "number" or sw <= 0 or sh <= 0 then return end
+	local scale = math.min(1, (sw - SCREEN_MARGIN) / WIDTH, (sh - SCREEN_MARGIN) / HEIGHT)
+	scale = math.max(MIN_SCALE, scale)
+	if math.abs((f:GetScale() or 1) - scale) > 0.001 then
+		f:SetScale(scale)
+		-- the saved offset is in unscaled units: place it again so it stays where it was
+		local pos = GH.db.profile.window
+		f:ClearAllPoints()
+		f:SetPoint(pos.point or "CENTER", UIParent, pos.point or "CENTER", (pos.x or 0) / scale, (pos.y or 0) / scale)
+	end
+end
+GH.FitMainFrame = function() if GH.mainFrame then FitToScreen(GH.mainFrame) end end
+
 function GH:CreateMainFrame()
 	if self.mainFrame then return self.mainFrame end
 	local f = MakeWindow()
@@ -168,11 +194,24 @@ function GH:CreateMainFrame()
 	MakeTabs(f) -- tabs on the left fill from the left (Professions, Map ... come with their steps)
 
 	f:Hide()
-	f:SetScript("OnShow", function()
+	f:SetScript("OnShow", function(s)
+		FitToScreen(s)
 		GH:RequestRoster()
 		GH:RefreshBoard(true)
 	end)
 	f:SetScript("OnHide", function() GH:HideDungeonPicker() end)
+	-- screen size / UI scale changes and a fit that waited for combat to end
+	local fit = CreateFrame("Frame") -- events only, never shown
+	for _, ev in ipairs({ "UI_SCALE_CHANGED", "DISPLAY_SIZE_CHANGED", "PLAYER_REGEN_ENABLED" }) do
+		if not (C_EventUtils and C_EventUtils.IsEventValid) or C_EventUtils.IsEventValid(ev) then
+			pcall(fit.RegisterEvent, fit, ev)
+		end
+	end
+	fit:SetScript("OnEvent", function(_, ev)
+		if ev == "PLAYER_REGEN_ENABLED" and not GH.fitAfterCombat then return end
+		GH.fitAfterCombat = nil
+		if f:IsShown() then FitToScreen(f) end
+	end)
 	self.mainFrame = f
 	self:BuildStatusTab(f.pages.status) -- UI\StatusTab.lua (its OnUpdate stops while the page is hidden)
 	self:ShowTab("status")
@@ -205,6 +244,8 @@ function GH:ShowTab(key)
 	end
 	if key == "settings" then
 		self:ShowSettingsTab(f.pages.settings) -- Options.lua
+	elseif key == "professions" then
+		self:ShowProfessionsTab(f.pages.professions) -- UI\ProfessionsTab.lua (built on first show)
 	elseif f:IsShown() then
 		self:RefreshBoard(true)
 	end

@@ -81,6 +81,7 @@ function GH:Startup()
 	self:ScheduleRepeatingTimer("SendHeartbeat", self.HEARTBEAT_SECONDS)
 	self:ScheduleRepeatingTimer("Prune", 86400)
 	self:InitStatus()     -- Status.lua: activity checks and the 1-hour clear
+	self:InitProfessions() -- Professions.lua: own skills, window scans, recipe lists, tooltip line
 
 	-- HELLO goes out once the guild list has loaded (Roster.lua calls OnRosterReady),
 	-- or after 15 s at the latest.
@@ -138,6 +139,10 @@ function GH:OnSlash(input)
 		self:TestExpire()
 	elseif cmd == "test" and rest == "ui" then
 		self:TestUI() -- UI\MainFrame.lua
+	elseif cmd == "test" and rest == "prof" then
+		self:TestProf() -- Professions.lua
+	elseif cmd == "selftest" then
+		ns.SelfTest:Start(rest == "full" and "full" or "quick") -- SelfTest.lua
 	elseif cmd == "options" or cmd == "config" or cmd == "settings" then
 		self:OpenOptions()
 	else
@@ -148,6 +153,8 @@ function GH:OnSlash(input)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_TEST)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_TEST2)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_TEST3)
+		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_TEST4)
+		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_SELFTEST)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_OPTIONS)
 	end
 end

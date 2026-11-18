@@ -51,6 +51,7 @@ function GH:RebuildRoster()
 	end
 	self.roster = roster
 	self.rosterOnline = online
+	if self.ProfRosterCheck then self:ProfRosterCheck(roster) end -- players who left: professions deleted
 
 	if not self.rosterReady then
 		self.rosterReady = true

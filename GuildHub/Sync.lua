@@ -13,6 +13,9 @@ local GH, U = ns.GH, ns.Util
 local RESPONDER_DELAYS = { 1, 4, 10, 13 }
 local BATCH_SIZE = 6 -- members per SYNC batch (records carry statuses since step 2)
 local ACTIVE_SECONDS = 600 -- a Guild Hub user heard from in the last 10 minutes
+local ONLINE_LIST_MAX = 40 -- names in a sync answer's "online with Guild Hub" list
+local ONLINE_MAX_AGE = 660 -- seconds; same window as IsAddonUserOnline
+local floor = math.floor
 
 GH.syncSeen = {} -- [asker] = GetTime() when someone announced SYNCING for them
 
@@ -102,9 +105,11 @@ function GH:AnswerSync(asker, since)
 		local useful = type(s) == "table" and self:IsOnline(name)
 			and (self:IsStatusFresh(s) or (s.a ~= nil and (now - (s.ts or 0)) < self.STATUS_TTL))
 		local sts = useful and (s.ts or 0) or 0
-		if name ~= asker and (m.lastSeen or 0) >= cutoff and ((m.ts or 0) > since or sts > since) then
+		-- professions (step 3): summaries only; the lists are fetched later, when needed
+		local pts = (type(m.prof) == "table" and type(m.prof.ts) == "number") and m.prof.ts or 0
+		if name ~= asker and (m.lastSeen or 0) >= cutoff and ((m.ts or 0) > since or sts > since or pts > since) then
 			names[#names + 1] = name
-			newest[name] = math.max(m.ts or 0, sts)
+			newest[name] = math.max(m.ts or 0, sts, pts)
 			if sts > 0 then statuses[name] = self:StatusPayload(s) end
 		end
 	end
@@ -112,6 +117,7 @@ function GH:AnswerSync(asker, since)
 	table.sort(names, function(a, b) return newest[a] > newest[b] end)
 
 	local cfg = ((gdb.cfg.ts or 0) > since and gdb.cfg.by) and gdb.cfg or nil
+	local on, oi = self:OnlineUsersFor(asker)
 	local batches = math.max(1, math.ceil(#names / BATCH_SIZE))
 	for b = 1, batches do
 		local part = {}
@@ -119,15 +125,63 @@ function GH:AnswerSync(asker, since)
 			local name = names[i]
 			local m = gdb.members[name]
 			part[name] = { ts = m.ts, class = m.class, level = m.level, version = m.version, lastSeen = m.lastSeen,
-				status = statuses[name] } -- older clients drop "status" (CleanRecord ignores unknown fields)
+				status = statuses[name], -- older clients drop "status" and "prof" (CleanRecord ignores unknown fields)
+				prof = self.ProfSyncPayload and self:ProfSyncPayload(name, m) or nil }
 		end
-		self:SendMsg("SYNC", { b = b, of = batches, m = part, cfg = (b == 1) and cfg or nil }, asker, "BULK")
+		self:SendMsg("SYNC", { b = b, of = batches, m = part, cfg = (b == 1) and cfg or nil,
+			on = (b == 1) and on or nil, oi = (b == 1) and oi or nil }, asker, "BULK")
 	end
 	self:Debug("sync for %s: %d members in %d batches", U.ShortName(asker), #names, batches)
 end
 
+-- Who we hear as online with Guild Hub (ourselves too), for a player who just logged in:
+-- on = { [name] = seconds since heard }, oi = { [name] = 1 } for those in an instance. Max 40 names.
+function GH:OnlineUsersFor(asker)
+	local on, oi, n = {}, nil, 0
+	local now = GetTime()
+	for name, u in pairs(self.addonUsers) do
+		if n >= ONLINE_LIST_MAX then break end
+		if name ~= asker and self:IsAddonUserOnline(name) then
+			local isMe = name == self:MyName()
+			on[name] = isMe and 0 or math.max(0, floor(now - (u.seen or now)))
+			n = n + 1
+			local inst
+			if isMe then inst = IsInInstance() else inst = u.inst end
+			if inst then
+				oi = oi or {}
+				oi[name] = 1
+			end
+		end
+	end
+	if n == 0 then return nil, nil end
+	return on, oi
+end
+
+-- The sync answer's list of online Guild Hub users: marks them as Guild Hub users here
+-- (display and responder list only; nothing is sent or done because of it).
+function GH:ReadOnlineUsers(on, oi)
+	if type(on) ~= "table" then return end
+	if type(oi) ~= "table" then oi = {} end
+	local now, me, n = GetTime(), self:MyName(), 0
+	for name, age in pairs(on) do
+		n = n + 1
+		if n > ONLINE_LIST_MAX then break end
+		name = U.ValidName(name)
+		age = U.ValidNumber(age, 0, ONLINE_MAX_AGE)
+		if name and age and name ~= me and self:IsGuildMember(name) and self:IsOnline(name) then
+			local u = self.addonUsers[name]
+			if not u then
+				u = { inst = oi[name] == 1 or nil }
+				self.addonUsers[name] = u
+			end
+			u.seen = math.max(u.seen or 0, now - age)
+		end
+	end
+end
+
 GH.handlers.SYNC = function(self, sender, data, distribution, isSelf)
 	if isSelf or distribution ~= "WHISPER" then return end
+	self:ReadOnlineUsers(data.on, data.oi)
 	local count = 0
 	if type(data.m) == "table" then
 		for name, rec in pairs(data.m) do
@@ -139,11 +193,15 @@ GH.handlers.SYNC = function(self, sender, data, distribution, isSelf)
 				-- statuses from a sync never show notes
 				self:MergeStatus(name, self:CleanStatus(rec.status))
 			end
+			if name and type(rec) == "table" and type(rec.prof) == "table" and self.MergeProf then
+				self:MergeProf(name, rec.prof, sender) -- summaries; lists come later from the sender
+			end
 		end
 	end
 	if data.cfg then self:MergeCfg(data.cfg) end
 	self.syncedThisSession = true
 	self:RefreshBoard()
+	if self.RefreshProfTab then self:RefreshProfTab() end
 	self:Debug("sync batch %s/%s from %s: %d records updated", tostring(data.b), tostring(data.of),
 		U.ShortName(sender), count)
 end

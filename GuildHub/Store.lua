@@ -22,6 +22,12 @@ local defaults = {
 		inviteFallback = false, -- set for good if the game blocks InviteUnit from the addon
 		-- (beta.2/3 saved `mini` here; it is no longer read and does no harm)
 		miniWindow = { point = "TOPRIGHT", x = -220, y = -220 },
+		-- step 3: professions
+		shareProf = true,    -- "Share my professions" (off: an empty PROF tells others to drop the data)
+		profTooltip = true,  -- "crafted by" line in item tooltips
+		profMats = true,     -- request whisper says "I'll bring the mats"
+		profFilter = "all",
+		profOnline = false,
 	},
 	char = {
 		trialNoticeShown = false,
@@ -31,6 +37,92 @@ local defaults = {
 function GH:InitStore()
 	self.db = LibStub("AceDB-3.0"):New("GuildHubDB", defaults, true)
 	self:MigrateStore()
+	self:RepairSaved()
+	if self.db.RegisterCallback then
+		self.db.RegisterCallback(self, "OnProfileChanged", "RepairSaved")
+		self.db.RegisterCallback(self, "OnProfileCopied", "RepairSaved")
+		self.db.RegisterCallback(self, "OnProfileReset", "RepairSaved")
+	end
+end
+
+------------------------------------------------------------------------
+-- Repair: a saved value with the wrong type (e.g. a damaged SavedVariables file) is reset
+-- to its default. Only that one field; correct data is never changed.
+------------------------------------------------------------------------
+local ANCHORS = { CENTER = true, TOP = true, BOTTOM = true, LEFT = true, RIGHT = true,
+	TOPLEFT = true, TOPRIGHT = true, BOTTOMLEFT = true, BOTTOMRIGHT = true }
+-- the Status board's sorts (same list as StatusTab.lua SORTS)
+local SORT_KEYS = { activity = true, level = true, zone = true, rank = true, name = true }
+
+local function CopyDefault(v)
+	if type(v) ~= "table" then return v end
+	local t = {}
+	for k, x in pairs(v) do t[k] = CopyDefault(x) end
+	return t
+end
+
+local function Finite(n)
+	return type(n) == "number" and n == n and n ~= math.huge and n ~= -math.huge
+end
+
+-- Compare t with its defaults d (one level into tables); returns the repaired field names.
+local function RepairTable(t, d, path, fixed)
+	for k, dv in pairs(d) do
+		local v = rawget(t, k)
+		if v ~= nil and type(v) ~= type(dv) then
+			t[k] = CopyDefault(dv)
+			fixed[#fixed + 1] = path .. k
+		elseif v == nil and type(dv) == "table" then
+			t[k] = CopyDefault(dv)
+		elseif type(v) == "number" and not Finite(v) then
+			t[k] = dv
+			fixed[#fixed + 1] = path .. k
+		elseif type(v) == "table" and type(dv) == "table" and next(dv) ~= nil then
+			RepairTable(v, dv, path .. k .. ".", fixed)
+		end
+	end
+end
+
+function GH:RepairSaved()
+	local db = self.db
+	if not db then return end
+	local fixed = {}
+	local p = db.profile
+	if type(p) == "table" then
+		RepairTable(p, defaults.profile, "", fixed)
+		for _, key in ipairs({ "window", "miniWindow" }) do
+			local w = p[key]
+			if not ANCHORS[w.point] then
+				w.point = defaults.profile[key].point
+				fixed[#fixed + 1] = key .. ".point"
+			end
+		end
+		if not SORT_KEYS[p.sort] then
+			p.sort = defaults.profile.sort
+			fixed[#fixed + 1] = "sort"
+		end
+		local muted, badMuted = p.alerts.muted, false
+		for k, v in pairs(muted) do
+			if type(k) ~= "string" or v ~= true then
+				muted[k] = nil -- clearing a field during pairs() is allowed in Lua
+				badMuted = true
+			end
+		end
+		if badMuted then fixed[#fixed + 1] = "alerts.muted" end
+		if p.shareGroup ~= nil and type(p.shareGroup) ~= "boolean" then
+			p.shareGroup = nil
+			fixed[#fixed + 1] = "shareGroup"
+		end
+	end
+	local g = db.global
+	if type(g) == "table" and type(g.guilds) ~= "table" then
+		g.guilds = {}
+		fixed[#fixed + 1] = "guilds"
+	end
+	for _, name in ipairs(fixed) do
+		self:Debug("repaired saved setting %s", name)
+	end
+	return fixed
 end
 
 -- Convert older saved data to the current layout. Never throws data away.
@@ -54,14 +146,42 @@ function GH:GetGuildDB()
 	local key = self:GuildKey()
 	if not key then return nil end
 	local guilds = self.db.global.guilds
+	if type(guilds) ~= "table" then
+		guilds = {}
+		self.db.global.guilds = guilds
+	end
 	local gdb = guilds[key]
-	if not gdb then
+	if type(gdb) ~= "table" then
 		gdb = { cfg = { officerMaxRank = 1, ts = 0 }, members = {}, feed = {}, lastOnline = 0 }
 		guilds[key] = gdb
 	end
-	gdb.cfg = gdb.cfg or { officerMaxRank = 1, ts = 0 }
-	gdb.members = gdb.members or {}
-	gdb.feed = gdb.feed or {}
+	-- wrong types (damaged saved file) are replaced; good data is kept
+	if type(gdb.cfg) ~= "table" then gdb.cfg = { officerMaxRank = 1, ts = 0 } end
+	if type(gdb.cfg.officerMaxRank) ~= "number" then gdb.cfg.officerMaxRank = 1 end
+	if gdb.cfg.ts ~= nil and type(gdb.cfg.ts) ~= "number" then gdb.cfg.ts = 0 end
+	if type(gdb.members) ~= "table" then gdb.members = {} end
+	if type(gdb.feed) ~= "table" then gdb.feed = {} end
+	if gdb.lastOnline ~= nil and type(gdb.lastOnline) ~= "number" then gdb.lastOnline = 0 end
+	if not (self.checkedGuilds and self.checkedGuilds[key]) then
+		-- once per session: drop member entries that aren't tables, and non-table statuses
+		for name, m in pairs(gdb.members) do
+			if type(name) ~= "string" or type(m) ~= "table" then
+				gdb.members[name] = nil
+			else
+				if m.status ~= nil and type(m.status) ~= "table" then m.status = nil end
+				if m.prof ~= nil then self:CleanSavedProf(m) end
+			end
+		end
+		-- feed lines (step 3): { ts, who, r, k }; anything else is dropped
+		for i = #gdb.feed, 1, -1 do
+			local e = gdb.feed[i]
+			if type(e) ~= "table" or type(e.ts) ~= "number" or type(e.who) ~= "string" or type(e.r) ~= "number" then
+				table.remove(gdb.feed, i)
+			end
+		end
+		self.checkedGuilds = self.checkedGuilds or {}
+		self.checkedGuilds[key] = true
+	end
 	return gdb
 end
 
@@ -71,6 +191,27 @@ end
 -- status = { p, t, d, a, as, st, ts } is merged separately by its own ts (Status.lua).
 -- ts = when the owner last changed the data; lastSeen = when anyone last saw them online.
 ------------------------------------------------------------------------
+
+-- Saved professions of one member (step 3): broken parts are dropped, a bad recipe list is marked
+-- for a new fetch. { ts, p = { [skillLine] = { r, m, s, n, h, l, old, scanned } }, off, offTs }
+function GH:CleanSavedProf(m)
+	local prof = m.prof
+	if type(prof) ~= "table" or type(prof.p) ~= "table" or type(prof.ts) ~= "number" then
+		m.prof = nil
+		return
+	end
+	for line, e in pairs(prof.p) do
+		if type(line) ~= "number" or type(e) ~= "table" or type(e.h) ~= "number" then
+			prof.p[line] = nil
+		else
+			for _, k in ipairs({ "r", "m", "s", "n", "scanned", "sentR" }) do
+				if e[k] ~= nil and type(e[k]) ~= "number" then e[k] = nil end
+			end
+			e.n = e.n or 0
+			if e.l ~= nil and (type(e.l) ~= "string" or e.l:find("[^0-9a-z,]")) then e.l, e.old = nil, true end
+		end
+	end
+end
 
 -- Check and copy a record that came from someone else. Unknown fields are dropped.
 function GH:CleanRecord(rec)
