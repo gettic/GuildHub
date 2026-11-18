@@ -370,6 +370,63 @@ local function CheckSaved()
     local okIdx, err = pcall(GH.ProfIndex, GH)
     if not okIdx then Problem("ERR", "prof index", Short(err)) end
     Info(("prof lists %d, feed %d"):format(lists, #gdb.feed))
+    -- 0.4.0: guild history repair on a broken copy (must not throw, must keep the good entries)
+    if GH.CheckRecorderData then
+        Count()
+        local copy = { rec = { first = { ["A-B"] = 5, [3] = "x" }, kills = { 7, { k = "1:2:3", t = 1, e = 1 } },
+            hours = { all = { [200] = {} }, weeks = 4 }, log = "x", motd = { { t = 1, s = "hi" } } } }
+        local okR, errR = pcall(GH.CheckRecorderData, GH, copy, true)
+        if not okR then Problem("DB", "history repair", Short(errR))
+        elseif copy.rec.first["A-B"] ~= 5 or #copy.rec.kills ~= 1 or #copy.rec.motd ~= 1 then
+            Problem("DB", "history repair", "lost good entries")
+        end
+    end
+end
+
+-- 0.4.0: feature registry, event dispatcher, ticker, budget, guild history caps
+local function CheckFeatures()
+    if not GH.features then return Skip("features", "(not loaded)") end
+    local on, off = 0, 0
+    for _, key in ipairs(GH.featureOrder) do
+        Count()
+        local running = GH.featureRunning and GH.featureRunning[key] or false
+        if GH:FeatureOn(key) then on = on + 1 else off = off + 1 end
+        -- a feature that is off must not listen to events or run jobs
+        if not GH:FeatureOn(key) and (GH:EventCount(key) > 0 or GH:JobCount(key) > 0) then
+            Problem("FEAT", key, "is off but still listens")
+        end
+        if GH.started and GH:FeatureOn(key) and not running then Problem("FEAT", key, "is on but didn't start") end
+        local f = GH.features[key]
+        if type(f.selftest) == "function" then
+            local ok, err = pcall(f.selftest, { Count = Count, Problem = Problem, Skip = Skip, Info = Info })
+            if not ok then Problem("ERR", "feature " .. key, Short(err)) end
+        end
+    end
+    -- no handler twice for one owner and event
+    Count()
+    for ev, list in pairs(GH.eventHandlers or {}) do
+        local seen = {}
+        for _, h in ipairs(list) do
+            if seen[h.owner] then Problem("EV", ev, "registered twice by " .. tostring(h.owner)) end
+            seen[h.owner] = true
+        end
+    end
+    -- the budget: tokens in range, nothing waiting for ages
+    Count()
+    local b = GH.budget
+    if b then
+        local free = GH:BudgetFree("guild")
+        if free > 10.001 then Problem("BUD", "tokens", "more than 10") end
+        local oldest = 0
+        -- live and normal messages (bulk sync answers may queue longer after many logins at once)
+        for _, q in ipairs(GH.sendQueue or {}) do
+            if q.class ~= "bulk" then oldest = math.max(oldest, GetTime() - (q.t or GetTime())) end
+        end
+        if oldest > 300 then Problem("BUD", "queue", "a message waited over 5 min") end
+        Info(("features %d on/%d off, jobs %d, queue %d, sent 10min %d"):format(on, off, GH:JobCount(),
+            #(GH.sendQueue or {}), GH:BudgetSent(600, "guild")))
+    end
+    if GH.lastApiLine then Info("api line taken") end
 end
 
 
@@ -403,7 +460,7 @@ end
 
 local function StepMain()
     CheckGroup(ST.MainParts(), Win())
-    if run.mode == "full" then
+    if run.mode == "full" and GH:FeatureOn("prof") then
         -- the Professions tab (built on first show); Restore goes back to the page that was open
         run.state.prevTab = run.state.prevTab or GH.mainFrame.currentTab
         GH:ShowTab("professions")
@@ -473,6 +530,7 @@ local function ShowCopyBox(text)
     box:Show()
     box.edit:SetFocus()
 end
+ST.ShowCopyBox = ShowCopyBox -- also used by /ghub test api (ApiTest.lua)
 
 Finish = function()
     if not run then return end
@@ -519,6 +577,7 @@ function ST:Start(mode)
     end
     run = ST.NewRun(mode)
     Guard("db", CheckSaved)
+    Guard("features", CheckFeatures)
     Count()
     if GH.profTooltipHooked then Info("tooltip hook on") else Info("tooltip hook off") end
     local ok, err = pcall(function()

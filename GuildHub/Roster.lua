@@ -7,7 +7,7 @@ GH.rosterReady = false
 GH.rosterOnline = 0
 
 function GH:InitRoster()
-	self:RegisterEvent("GUILD_ROSTER_UPDATE", "OnRosterUpdate")
+	self:On("roster", "GUILD_ROSTER_UPDATE", function() GH:OnRosterUpdate() end)
 end
 
 function GH:RequestRoster()
@@ -52,6 +52,8 @@ function GH:RebuildRoster()
 	self.roster = roster
 	self.rosterOnline = online
 	if self.ProfRosterCheck then self:ProfRosterCheck(roster) end -- players who left: professions deleted
+	if self.RecordRoster then self:RecordRoster(roster) end         -- guild history (Features\Recorders.lua)
+	if self.started then self:ApplyFeatures() end -- a guild switch counts only while its officer still is one
 
 	if not self.rosterReady then
 		self.rosterReady = true

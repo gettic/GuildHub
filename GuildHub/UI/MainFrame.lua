@@ -200,28 +200,45 @@ function GH:CreateMainFrame()
 		GH:RefreshBoard(true)
 	end)
 	f:SetScript("OnHide", function() GH:HideDungeonPicker() end)
-	-- screen size / UI scale changes and a fit that waited for combat to end
-	local fit = CreateFrame("Frame") -- events only, never shown
-	for _, ev in ipairs({ "UI_SCALE_CHANGED", "DISPLAY_SIZE_CHANGED", "PLAYER_REGEN_ENABLED" }) do
-		if not (C_EventUtils and C_EventUtils.IsEventValid) or C_EventUtils.IsEventValid(ev) then
-			pcall(fit.RegisterEvent, fit, ev)
-		end
-	end
-	fit:SetScript("OnEvent", function(_, ev)
+	-- screen size / UI scale changes and a fit that waited for combat to end (Events.lua dispatcher)
+	local function OnFitEvent(ev)
 		if ev == "PLAYER_REGEN_ENABLED" and not GH.fitAfterCombat then return end
 		GH.fitAfterCombat = nil
 		if f:IsShown() then FitToScreen(f) end
-	end)
+	end
+	for _, ev in ipairs({ "UI_SCALE_CHANGED", "DISPLAY_SIZE_CHANGED", "PLAYER_REGEN_ENABLED" }) do
+		self:On("window", ev, OnFitEvent)
+	end
 	self.mainFrame = f
 	self:BuildStatusTab(f.pages.status) -- UI\StatusTab.lua (its OnUpdate stops while the page is hidden)
+	self:UpdateFeatureTabs()
 	self:ShowTab("status")
 	return f
+end
+
+-- Tabs of switched-off features are hidden (Professions is the last tab, so nothing moves).
+local TAB_FEATURE = { professions = "prof" }
+function GH:UpdateFeatureTabs()
+	local f = self.mainFrame
+	if not f then return end
+	for key, feat in pairs(TAB_FEATURE) do
+		local on = self:FeatureOn(feat)
+		if f.tabs[key] then f.tabs[key]:SetShown(on) end
+		if not on and f.currentTab == key then self:ShowTab("status") end
+	end
+end
+
+-- Features.lua: a feature was switched on or off.
+function GH:OnFeaturesChanged()
+	self:UpdateFeatureTabs()
+	if self.optionsChanged then self:optionsChanged() end
 end
 
 -- Switch the window to a page ("status" or "settings" (gear)). Pages are built on first show.
 function GH:ShowTab(key)
 	local f = self:CreateMainFrame()
 	if not f.pages[key] then key = "status" end
+	if TAB_FEATURE[key] and not self:FeatureOn(TAB_FEATURE[key]) then key = "status" end
 	f.currentTab = key
 	self:HideDungeonPicker()
 	for i, t in ipairs(TABS) do
@@ -257,6 +274,19 @@ function GH:TestUI()
 	local yes = function(v) return v and L.YES or L.NO end
 	self:Msg(L.TEST_UI, tostring(f.gearButton and f.gearButton.art or "?"), yes(f.ghTemplate), yes(f.tabTemplate),
 		yes(self.statusTab and self.statusTab.scrollBox), yes(self.statusTab and self.statusTab.sort and self.statusTab.sort.isDropdown))
+	-- 0.4.0: art and menus the next betas want (map pins, name menu, filter buttons)
+	local function atlas(name)
+		local ok, info = pcall(function() return C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(name) end)
+		return yes(ok and info)
+	end
+	local function file(path)
+		if type(GetFileIDFromPath) ~= "function" then return "-" end
+		local ok, id = pcall(GetFileIDFromPath, path)
+		return yes(ok and type(id) == "number" and id > 0)
+	end
+	self:Msg(L.TEST_UI2, yes(MenuUtil and type(MenuUtil.CreateContextMenu) == "function"),
+		yes(W.HasTemplate("WowStyle1FilterDropdownTemplate")), atlas("Dungeon"), atlas("Raid"), atlas("common-icon-checkmark"),
+		file("Interface\\Minimap\\PartyRaidBlips"), file("Interface\\Common\\ReputationStar"))
 end
 
 -- /ghub, minimap left-click: always the full window (open/close). If the mini window is showing,

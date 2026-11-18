@@ -2,15 +2,16 @@
 local _, ns = ...
 local GH, U = ns.GH, ns.Util
 
-local SCHEMA = 1
+local SCHEMA = 2
 
 local defaults = {
 	global = {
-		schema = SCHEMA,
+		-- no "schema" here: AceDB never saves a value equal to its default, so MigrateStore sets it
 		guilds = {},
 	},
 	profile = {
 		debug = false,
+		features = {},       -- 0.4.0: [featureKey] = false when the player switched it off (Features.lua)
 		-- step 2: status board
 		window = { point = "CENTER", x = 0, y = 0 },
 		sort = "activity",
@@ -35,6 +36,7 @@ local defaults = {
 }
 
 function GH:InitStore()
+	self:MergeFeatureDefaults(defaults) -- each feature's own defaults (Features.lua)
 	self.db = LibStub("AceDB-3.0"):New("GuildHubDB", defaults, true)
 	self:MigrateStore()
 	self:RepairSaved()
@@ -113,6 +115,15 @@ function GH:RepairSaved()
 			p.shareGroup = nil
 			fixed[#fixed + 1] = "shareGroup"
 		end
+		-- feature switches: only "false" (switched off) is stored; anything else is dropped
+		local badFeat = false
+		for k, v in pairs(p.features) do
+			if type(k) ~= "string" or v ~= false then
+				p.features[k] = nil
+				badFeat = true
+			end
+		end
+		if badFeat then fixed[#fixed + 1] = "features" end
 	end
 	local g = db.global
 	if type(g) == "table" and type(g.guilds) ~= "table" then
@@ -125,11 +136,27 @@ function GH:RepairSaved()
 	return fixed
 end
 
--- Convert older saved data to the current layout. Never throws data away.
-function GH:MigrateStore()
+-- Convert older saved data to the current layout, one step after the other. Never throws data away;
+-- a step only adds or converts. Running it again changes nothing.
+-- global.schema is NOT in the AceDB defaults (a value equal to its default is never saved), so it is
+-- stored for real from 0.4.0 on. A file without a schema is from before 0.4.0 (where the default was 1
+-- and so never saved) or brand new: both read as 1, so every step must also be safe on empty data.
+local MIGRATIONS = {
+	-- 2 (0.4.0): feature switches + guild history. Everything new is created when first used
+	-- (profile.features by the defaults, gdb.featOff / gdb.rec by GetGuildDB), so nothing to convert.
+	[2] = function() end,
+}
+
+-- target / steps: only for tests (default: SCHEMA / MIGRATIONS).
+function GH:MigrateStore(target, steps)
 	local g = self.db.global
-	g.schema = g.schema or SCHEMA
-	-- (future: if g.schema < 2 then ... convert ... g.schema = 2 end)
+	target, steps = target or SCHEMA, steps or MIGRATIONS
+	if type(g.schema) ~= "number" or g.schema ~= g.schema or g.schema < 1 then g.schema = 1 end
+	for n = math.floor(g.schema) + 1, target do
+		if steps[n] then steps[n](self, g) end
+		g.schema = n
+	end
+	if g.schema < target then g.schema = target end
 end
 
 -- "<GuildName>-<Realm>", or nil while the game hasn't told us the guild yet.
@@ -162,6 +189,11 @@ function GH:GetGuildDB()
 	if type(gdb.members) ~= "table" then gdb.members = {} end
 	if type(gdb.feed) ~= "table" then gdb.feed = {} end
 	if gdb.lastOnline ~= nil and type(gdb.lastOnline) ~= "number" then gdb.lastOnline = 0 end
+	-- 0.4.0: officers' guild feature switch, and the guild history kept on this computer
+	if type(gdb.featOff) ~= "table" or type(gdb.featOff.off) ~= "table" then gdb.featOff = { off = {}, ts = 0 } end
+	if type(gdb.featOff.ts) ~= "number" then gdb.featOff.ts = 0 end
+	if gdb.featOff.by ~= nil and type(gdb.featOff.by) ~= "string" then gdb.featOff.by = nil end
+	if self.CheckRecorderData then self:CheckRecorderData(gdb) end
 	if not (self.checkedGuilds and self.checkedGuilds[key]) then
 		-- once per session: drop member entries that aren't tables, and non-table statuses
 		for name, m in pairs(gdb.members) do
@@ -179,6 +211,7 @@ function GH:GetGuildDB()
 				table.remove(gdb.feed, i)
 			end
 		end
+		if self.CheckRecorderData then self:CheckRecorderData(gdb, true) end -- broken history entries dropped, caps
 		self.checkedGuilds = self.checkedGuilds or {}
 		self.checkedGuilds[key] = true
 	end

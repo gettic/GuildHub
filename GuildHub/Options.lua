@@ -8,7 +8,92 @@ local function CurrentRankName()
 	return GH:GetRankNames()[r] or tostring(r)
 end
 
+-- 0.4.0: one switch per switchable feature (own), the same for officers (whole guild), the guild
+-- history line and its Clear button, all in the Features section (orders 19.6-19.99); the guild
+-- switches only show for officers, with a line saying who switched what off.
+local function GuildOffNote(key)
+	local off, by, stale = GH:GuildOff()
+	if stale and by then return "\n" .. L.OPT_FEAT_EXOFFICER:format(U.ShortName(by)) end
+	if off and off[key] and by then return "\n|cffff8040" .. L.OPT_FEAT_BYGUILD:format(U.ShortName(by)) .. "|r" end
+	return ""
+end
+
+local function AddFeatureOptions(args)
+	args.featHeader = { type = "header", order = 19.6, name = L.OPT_FEAT_HDR }
+	args.featInfo = { type = "description", order = 19.61, name = L.OPT_FEAT_INFO }
+	-- who switched what off for the guild (any officer can undo it with the switches below)
+	local function GuildNoteText()
+		local off, by, stale = GH:GuildOff()
+		if stale and by then return L.OPT_FEAT_EXOFFICER:format(U.ShortName(by)) end
+		if not (off and by) then return "" end
+		local names = {}
+		for _, key in ipairs(GH:SwitchableKeys()) do
+			if off[key] then
+				local f = GH.features[key]
+				names[#names + 1] = f.name and L[f.name] or key
+			end
+		end
+		if #names == 0 then return "" end
+		return "|cffff8040" .. table.concat(names, ", ") .. ": " .. L.OPT_FEAT_BYGUILD:format(U.ShortName(by)) .. "|r"
+	end
+	args.featGuildNote = {
+		type = "description", order = 19.615, name = GuildNoteText,
+		hidden = function() return GuildNoteText() == "" end,
+	}
+	for i, key in ipairs(GH:SwitchableKeys()) do
+		local f = GH.features[key]
+		local label = f.name and L[f.name] or key
+		args["feat_" .. key] = {
+			type = "toggle", order = 19.62 + i * 0.01, width = "full",
+			name = label,
+			desc = function() return (L[(f.name or "") .. "_DESC"] or "") .. GuildOffNote(key) end,
+			get = function() return GH.db.profile.features[key] ~= false end,
+			set = function(_, v) GH:SetFeature(key, v) end,
+		}
+		args["featGuild_" .. key] = {
+			type = "toggle", order = 19.7 + i * 0.01, width = "full", -- in the Features section, officers only
+			name = L.OPT_FEAT_GUILD .. ": " .. label, desc = L.OPT_FEAT_GUILD_DESC,
+			get = function()
+				local off = GH:GuildOff()
+				return off and off[key] or false
+			end,
+			set = function(_, v) GH:SetGuildFeature(key, not v) end,
+			hidden = function() return not IsInGuild() or not GH:IsOfficer(GH:MyName()) end,
+		}
+	end
+	args.recKept = {
+		type = "description", order = 19.8,
+		name = function()
+			local c = GH.RecorderCounts and GH:RecorderCounts()
+			if not c then return "" end
+			return L.OPT_REC_KEPT:format(c.first, c.hours, c.kills, c.log, c.motd)
+		end,
+		hidden = function() return not IsInGuild() end,
+	}
+	args.recClear = {
+		type = "execute", order = 19.81,
+		name = L.OPT_REC_CLEAR, desc = L.OPT_REC_CLEAR_DESC,
+		confirm = true, confirmText = L.OPT_REC_CLEAR_CONFIRM,
+		func = function() GH:ClearRecorders() end,
+		hidden = function() return not IsInGuild() or not GH.ClearRecorders end,
+	}
+end
+
+-- Features.lua calls this (through OnFeaturesChanged) so open settings show the new state.
+function GH:optionsChanged()
+	local reg = LibStub("AceConfigRegistry-3.0", true)
+	if reg then reg:NotifyChange("GuildHub") end
+end
+
+local BuildOptionsBase
+
 local function BuildOptions()
+	local t = BuildOptionsBase()
+	AddFeatureOptions(t.args)
+	return t
+end
+
+BuildOptionsBase = function()
 	return {
 		type = "group",
 		name = L.OPT_TITLE,

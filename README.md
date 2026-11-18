@@ -52,19 +52,32 @@ Copy the `GuildHub` folder into your WoW `AddOns` folder, then restart the game 
 |---|---|
 | `/ghub` | Open or close the status board |
 | `/ghub help` | Show the list of commands |
-| `/ghub status` | Show who has Guild Hub and which version (beta testers too) |
+| `/ghub status` | Show who has Guild Hub and which version (beta testers too), the guild history counts, and how many addon messages you sent in the last 10 minutes |
 | `/ghub options` | Open Settings |
 | `/ghub selftest` | Check the window and saved data; shows one line to copy and send to the author (no names in it). `/ghub selftest full` also checks the Professions tab |
 | `/ghub debug` | Show addon messages |
 | `/ghub test big` | Run a test of splitting a long message |
 | `/ghub test activity` | Show what Guild Hub thinks you are doing |
 | `/ghub test expire` | Make your status run out |
-| `/ghub test ui` | Show which Blizzard art your game gave the window |
+| `/ghub test ui` | Show which Blizzard art your game gave the window (and a second line to copy) |
+| `/ghub test api` | Check which game functions this client has; shows one line to copy. Changes and sends nothing |
 | `/ghub test prof` | Show what Guild Hub knows about your own professions |
 
 ## Settings
 
 Click the gear button in the title bar of the `/ghub` window (left of the "-"), or use `/ghub options` or the minimap button's right-click. Click the gear again to go back to Status. The same settings are in Esc > Options > AddOns > Guild Hub. There you can switch off automatic activity, sharing your group size, sharing your professions, the "crafted by" tooltip line and the notes, unmute players, show or hide guildmates without Guild Hub, and hide the minimap button. The Guild Master sets which ranks count as officers.
+
+**Features.** The Features section lets you switch Professions on or off for yourself, and turn "Keep guild history on this computer" on or off (on by default). Officers can also switch a part off for the whole guild. They can only switch things off, never on, and the switch stops counting if they lose their officer rank.
+
+**Guild history.** With "Keep guild history on this computer" on, Guild Hub saves these on your computer only. Nothing is sent to anyone:
+
+- when it first saw each guildmate
+- how many guildmates are online at each hour (totals only)
+- level milestones
+- boss kills and failed attempts
+- the guild event log and the message of the day
+
+Settings shows what is kept and has a "Clear guild history" button. Later versions will show it as guild firsts, anniversaries and an online heatmap.
 
 ## Good to know
 
@@ -74,6 +87,7 @@ Click the gear button in the title bar of the `/ghub` window (left of the "-"), 
 - Guildmates who use Guild Hub show as such within a few seconds after you log in.
 - On narrow screens or with a large UI scale, the window shrinks to fit.
 - A damaged settings file no longer causes an error: bad settings go back to their defaults and your guild data is kept.
+- All addon messages share one budget that stays inside the game's limit, so big guild logins don't get guild messages refused.
 - Beta versions are understood. Players on a normal release are only told about newer normal releases.
 
 ## For people who change the code
@@ -85,20 +99,25 @@ The addon lives in `GuildHub\`. Files are loaded in this order (see `GuildHub_Fo
 | `Locale.lua` | Text |
 | `Util.lua` | Small helpers |
 | `Core.lua` | Start-up, timers and the `/ghub` command |
+| `Features.lua` | Switching features on or off (own setting and officer switch) |
+| `Events.lua` | Shared game event handling |
+| `Budget.lua` | One shared budget for all addon messages |
 | `Store.lua` | Saved data, merging and 90-day pruning |
 | `Roster.lua` | Guild roster |
 | `Comm.lua` | Sending and receiving addon messages |
 | `Sync.lua` | Syncing data between guildmates |
 | `Status.lua` | Status logic: presets, activity, alerts, board rows |
 | `Professions.lua` | Professions: reading recipes, sharing them, search, tooltip line |
+| `Features\Recorders.lua` | Guild history kept on this computer |
 | `UI\Widgets.lua` | Buttons, text boxes and the alert note |
 | `UI\MainFrame.lua` | The window, the Status tab, the gear button and the minimap button |
 | `UI\StatusTab.lua` | The status board tab |
 | `UI\ProfessionsTab.lua` | The Professions tab |
 | `UI\MiniFrame.lua` | The small mini mode window |
 | `Options.lua` | Settings (the Settings page in the window and the Options page) |
+| `ApiTest.lua` | The `/ghub test api` check |
 | `SelfTest.lua` | The `/ghub selftest` check |
 
 ## Credits
 
-Uses the embedded libraries Ace3 (BSD-style licence, see `GuildHub\Libs\Ace3-LICENSE.txt`) and HereBeDragons (not used until the map is built). They keep their own licences. Guild Hub itself is all rights reserved: you may download it and use it to play, but not copy, change or redistribute it (see `LICENSE`).
+Uses the embedded libraries Ace3 (BSD-style licence, see `GuildHub\Libs\Ace3-LICENSE.txt`) and HereBeDragons by Nevcairiel (BSD 3-Clause licence, see `GuildHub\Libs\HereBeDragons\LICENSE.txt`; not used until the guild map is built). They keep their own licences. Guild Hub itself is all rights reserved: you may download it and use it to play, but not copy, change or redistribute it (see `LICENSE`).

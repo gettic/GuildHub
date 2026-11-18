@@ -54,6 +54,7 @@ end
 GH.handlers.HELLO = function(self, sender, data, distribution, isSelf)
 	if isSelf or distribution ~= "GUILD" then return end
 	self:ReadSelfInfo(sender, data)
+	self:ResendOwnFeatOff(U.ValidTime(data.since) or 0)
 
 	if data.inst == true then
 		self:Debug("no sync for %s (they are in an instance)", U.ShortName(sender))
@@ -106,7 +107,7 @@ function GH:AnswerSync(asker, since)
 			and (self:IsStatusFresh(s) or (s.a ~= nil and (now - (s.ts or 0)) < self.STATUS_TTL))
 		local sts = useful and (s.ts or 0) or 0
 		-- professions (step 3): summaries only; the lists are fetched later, when needed
-		local pts = (type(m.prof) == "table" and type(m.prof.ts) == "number") and m.prof.ts or 0
+		local pts = (self:FeatureOn("prof") and type(m.prof) == "table" and type(m.prof.ts) == "number") and m.prof.ts or 0
 		if name ~= asker and (m.lastSeen or 0) >= cutoff and ((m.ts or 0) > since or sts > since or pts > since) then
 			names[#names + 1] = name
 			newest[name] = math.max(m.ts or 0, sts, pts)
@@ -117,6 +118,7 @@ function GH:AnswerSync(asker, since)
 	table.sort(names, function(a, b) return newest[a] > newest[b] end)
 
 	local cfg = ((gdb.cfg.ts or 0) > since and gdb.cfg.by) and gdb.cfg or nil
+	local fo = (type(gdb.featOff) == "table" and (gdb.featOff.ts or 0) > since and gdb.featOff.by) and gdb.featOff or nil
 	local on, oi = self:OnlineUsersFor(asker)
 	local batches = math.max(1, math.ceil(#names / BATCH_SIZE))
 	for b = 1, batches do
@@ -125,10 +127,12 @@ function GH:AnswerSync(asker, since)
 			local name = names[i]
 			local m = gdb.members[name]
 			part[name] = { ts = m.ts, class = m.class, level = m.level, version = m.version, lastSeen = m.lastSeen,
-				status = statuses[name], -- older clients drop "status" and "prof" (CleanRecord ignores unknown fields)
-				prof = self.ProfSyncPayload and self:ProfSyncPayload(name, m) or nil }
+				status = statuses[name], -- older clients drop "status", "prof" and "b" (CleanRecord ignores unknown fields)
+				prof = (self.ProfSyncPayload and self:FeatureOn("prof")) and self:ProfSyncPayload(name, m) or nil,
+				b = type(m.b) == "table" and m.b or nil }
 		end
 		self:SendMsg("SYNC", { b = b, of = batches, m = part, cfg = (b == 1) and cfg or nil,
+			fo = (b == 1) and fo or nil,
 			on = (b == 1) and on or nil, oi = (b == 1) and oi or nil }, asker, "BULK")
 	end
 	self:Debug("sync for %s: %d members in %d batches", U.ShortName(asker), #names, batches)
@@ -193,12 +197,18 @@ GH.handlers.SYNC = function(self, sender, data, distribution, isSelf)
 				-- statuses from a sync never show notes
 				self:MergeStatus(name, self:CleanStatus(rec.status))
 			end
-			if name and type(rec) == "table" and type(rec.prof) == "table" and self.MergeProf then
+			if name and type(rec) == "table" and type(rec.prof) == "table" and self.MergeProf and self:FeatureOn("prof") then
 				self:MergeProf(name, rec.prof, sender) -- summaries; lists come later from the sender
+			end
+			if name and type(rec) == "table" and type(rec.b) == "table" and name ~= self:MyName() then
+				self:ReadBundle(name, rec.b, true) -- the bundle record (Features.lua)
 			end
 		end
 	end
 	if data.cfg then self:MergeCfg(data.cfg) end
+	-- officers' guild feature switch: only from the officer who set it (a relayed copy could be
+	-- forged); otherwise the officer's own FOFF brings it (they answer HELLO with it, Sync.lua)
+	if data.fo then self:MergeFeatOff(data.fo, sender) end
 	self.syncedThisSession = true
 	self:RefreshBoard()
 	if self.RefreshProfTab then self:RefreshProfTab() end

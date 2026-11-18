@@ -10,36 +10,49 @@ local GH, L, U = ns.GH, ns.L, ns.Util
 
 local tconcat = table.concat
 
--- Shortest time between two messages of the same type (seconds). A message sent sooner
--- is held back and only the newest one goes out when the time is up.
-local MIN_INTERVAL = {
-	HELLO   = 30,
-	HB      = 60,
-	CFG     = 10,
-	TEST    = 10,
-	STATUS  = 10,
-	GRP     = 15, -- group size; also waits for 2 s without roster changes (Status.lua)
-	SYNCING = 0,
-	SYNC    = 0,
-	PROF    = 60, -- professions summary (tos check: at most one per minute)
-	RREQ    = 3,  -- recipe list request (per target)
-	RLIST   = 0,  -- recipe list answers: paced in Professions.lua (bytes per second)
-}
--- Kept and sent later when a boss fight / PvP match blocks messages.
-local KEEP_IN_LOCKDOWN = { HELLO = true, HB = true, CFG = true, STATUS = true, GRP = true, PROF = true }
+-- The message system's own types (other features register theirs: Status.lua, Professions.lua).
+-- min = shortest time between two messages of the same type (seconds): a message sent sooner is
+-- held back and only the newest one goes out when the time is up. keep = kept and sent later when
+-- a boss fight / PvP match blocks messages (others are dropped then). class = budget class
+-- (Budget.lua). latest = while waiting for the budget, a newer one replaces the older one.
+GH:RegisterFeature({
+	key = "comm", core = true,
+	messages = {
+		HELLO   = { class = "live", min = 30, keep = true, latest = true },
+		HB      = { class = "live", min = 60, keep = true, latest = true },
+		CFG     = { class = "live", min = 10, keep = true, latest = true },
+		FOFF    = { class = "live", min = 10, keep = true, latest = true }, -- officers' guild feature switch
+		REC     = { class = "normal", min = 30, keep = true, latest = true }, -- bundle: changed fields only
+		TEST    = { class = "bulk", min = 10 },
+		SYNCING = { class = "live", min = 0 },
+		SYNC    = { class = "bulk", min = 0 },
+	},
+})
 
 local MAX_INCOMING = 30000 -- characters; anything bigger is dropped
 
-GH.handlers  = {}  -- [TYPE] = function(self, sender, data, distribution)
+GH.handlers  = GH.handlers or {} -- [TYPE] = function(self, sender, data, distribution) (Features.lua adds FOFF, REC)
 GH.addonUsers = {} -- ["Name-Realm"] = { seen = GetTime(), version, inst }
 GH.lastSent  = {}
 GH.held      = {}
+GH.sendQueue = {}  -- messages waiting for the budget (Budget.lua): { key, mtype, text, target, prio, class, bucket, pieces }
+GH.goneTargets = {} -- [name] = GetTime(): a whisper to them failed because they went offline
+
+local function MsgType(mtype)
+	return GH.msgTypes[mtype] or { class = "normal", min = 5, keep = false, latest = false }
+end
+
+local function Pieces(text)
+	if #text <= 255 then return 1 end
+	return math.ceil(#text / 254)
+end
 
 function GH:InitComm()
 	self:RegisterComm(self.PREFIX, "OnCommReceived")
-	if C_EventUtils and C_EventUtils.IsEventValid and C_EventUtils.IsEventValid("ADDON_RESTRICTION_STATE_CHANGED") then
-		self:RegisterEvent("ADDON_RESTRICTION_STATE_CHANGED", "FlushHeld")
-	end
+	self:On("comm", "ADDON_RESTRICTION_STATE_CHANGED", function() GH:FlushHeld() end)
+	self:On("comm", "PLAYER_GUILD_UPDATE", function() GH.notInGuild = nil end)
+	self:Every("comm", "budget", 0.5, function() GH:FlushQueue() end)
+	self:Every("comm", "budgetTidy", 10, function() GH:BudgetTick() end)
 	self.addonUsers[self:MyName() or "?"] = { seen = GetTime(), version = self.VERSION }
 end
 
@@ -69,11 +82,16 @@ end
 ------------------------------------------------------------------------
 -- mtype: message type; data: table; target: name for WHISPER (nil = GUILD); prio: "NORMAL"/"BULK"
 function GH:SendMsg(mtype, data, target, prio)
-	if self.cannotSend or not IsInGuild() then return end
+	if self.cannotSend or self.notInGuild or not IsInGuild() then return end
+	if not self:TypeOn(mtype) then
+		self:Debug("not sent: %s (that part is switched off)", mtype)
+		return
+	end
+	local mt = MsgType(mtype)
 	local key = target and (mtype .. ":" .. target) or mtype
 
 	-- pacing per type
-	local wait = (MIN_INTERVAL[mtype] or 5) - (GetTime() - (self.lastSent[key] or -1000))
+	local wait = mt.min - (GetTime() - (self.lastSent[key] or -1000))
 	if wait > 0 then
 		local h = self.held[key]
 		local timer = h and h.timer or self:ScheduleTimer("SendHeld", wait + 0.1, key)
@@ -83,50 +101,136 @@ function GH:SendMsg(mtype, data, target, prio)
 
 	-- boss fight / PvP match: keep the important ones, drop the rest
 	if self:InLockdown() then
-		if KEEP_IN_LOCKDOWN[mtype] then
-			self.held[key] = { mtype, data, target, prio, lockdown = true }
-			if not self.lockdownTimer then
-				self:Debug(L.LOCKDOWN_PAUSED)
-				self.lockdownTimer = self:ScheduleRepeatingTimer("FlushHeld", 5)
-			end
-		else
-			self:Debug("dropped %s (messages are paused)", mtype)
-		end
+		self:HoldForLockdown(key, mtype, data, target, prio)
 		return
 	end
 
 	local text = tconcat({ self.PROTO, mtype, self:Serialize(data) }, "\t")
-	local channel = target and "WHISPER" or "GUILD"
-	self.lastSent[key] = GetTime()
-	self:Debug("> %s to %s (%d chars, %d pieces)", mtype, target and U.ShortName(target) or "guild",
-		#text, math.ceil(#text / 254))
-	-- whisper to "Mira Ashford", not "Mira Ashford-Realm" (WoW Forever names); info keeps the key
-	self:SendCommMessage(self.PREFIX, text, channel, target and U.WhisperName(target), prio or "NORMAL", self.OnSendResult,
-		{ mtype = mtype, target = target })
+	local item = { key = key, mtype = mtype, text = text, target = target, prio = prio, class = mt.class,
+		bucket = self:BudgetBucket(target), pieces = Pieces(text), t = GetTime() }
+	-- the budget: wait in the queue if there is no room (or others are already waiting)
+	if self:QueueWaiting(item.bucket, item.class) or not self:BudgetAllows(item.class, item.pieces, item.bucket) then
+		self:Enqueue(item, mt.latest)
+		return
+	end
+	self:DoSend(item)
 end
 
--- Called by AceComm for each piece: (arg, bytesSent, bytesTotal, didSend)
+function GH:HoldForLockdown(key, mtype, data, target, prio)
+	if MsgType(mtype).keep then
+		self.held[key] = { mtype, data, target, prio, lockdown = true }
+		if not self.lockdownJob then
+			self:Debug(L.LOCKDOWN_PAUSED)
+			self.lockdownJob = true
+			self:Every("comm", "lockdown", 5, function() GH:FlushHeld() end)
+		end
+	else
+		self:Debug("dropped %s (messages are paused)", mtype)
+	end
+end
+
+-- Something of this bucket and class (or a more urgent class) is already waiting: keep the order.
+local CLASS_RANK = { live = 1, normal = 2, bulk = 3 }
+function GH:QueueWaiting(bucket, class)
+	for _, q in ipairs(self.sendQueue) do
+		if q.bucket == bucket and CLASS_RANK[q.class] <= CLASS_RANK[class] then return true end
+	end
+	return false
+end
+
+function GH:Enqueue(item, latest)
+	if latest then
+		for i, q in ipairs(self.sendQueue) do
+			if q.key == item.key then
+				item.t = q.t
+				self.sendQueue[i] = item -- the newest replaces the waiting one, keeps its place
+				return
+			end
+		end
+	end
+	self.sendQueue[#self.sendQueue + 1] = item
+	self:Debug("waiting for room: %s (%d pieces)", item.mtype, item.pieces)
+end
+
+-- Ticker (0.5 s): send what fits, most urgent class first, oldest first, never out of order
+-- within one bucket and class.
+function GH:FlushQueue()
+	local q = self.sendQueue
+	if #q == 0 then return end
+	if self.cannotSend or self.notInGuild or not IsInGuild() then return end
+	local lockdown = self:InLockdown()
+	local blocked = {}
+	for rank = 1, 3 do
+		local i = 1
+		while i <= #q do
+			local item = q[i]
+			if CLASS_RANK[item.class] == rank then
+				local bk = item.bucket .. ":" .. item.class
+				if not self:TypeOn(item.mtype) or (item.target and self.goneTargets[item.target]) then
+					table.remove(q, i) -- switched off meanwhile / the player went offline
+				elseif lockdown then
+					table.remove(q, i)
+					self:HoldForLockdown(item.key, item.mtype, nil, item.target, item.prio)
+					if self.held[item.key] then self.held[item.key].text = item.text end
+				elseif blocked[bk] or not self:BudgetAllows(item.class, item.pieces, item.bucket) then
+					blocked[bk] = true
+					i = i + 1
+				else
+					table.remove(q, i)
+					self:DoSend(item)
+				end
+			else
+				i = i + 1
+			end
+		end
+	end
+end
+
+function GH:DoSend(item)
+	local channel = item.target and "WHISPER" or "GUILD"
+	self.lastSent[item.key] = GetTime()
+	local pend = self:BudgetHandOff(item.bucket, item.pieces)
+	local free = self:BudgetFree(item.bucket)
+	self:Debug("> %s to %s (%d chars, %d pieces, budget %d/10)", item.mtype,
+		item.target and U.ShortName(item.target) or "guild", #item.text, item.pieces, math.max(0, math.floor(free)))
+	if item.mtype == "REC" and self.OnRecSent then self:OnRecSent() end
+	if self.goneTargets[item.target or ""] then self.goneTargets[item.target] = nil end
+	-- whisper to "Mira Ashford", not "Mira Ashford-Realm" (WoW Forever names); info keeps the key
+	self:SendCommMessage(self.PREFIX, item.text, channel, item.target and U.WhisperName(item.target),
+		item.prio or "NORMAL", self.OnSendResult, { mtype = item.mtype, target = item.target, pend = pend })
+end
+
+-- Called by AceComm for each piece when it really leaves (or fails): (arg, bytesSent, bytesTotal, didSend)
 function GH.OnSendResult(info, sent, total, didSend)
+	GH:BudgetPieceDone(info.pend, didSend ~= false)
 	if didSend == false then
-		GH:OnSendFailed(info)
+		if not info.failed then
+			info.failed = true
+			GH:OnSendFailed(info)
+		end
 	elseif sent == total then
 		GH:Debug("  %s sent OK", info.mtype)
 	end
 end
 
+-- AceComm only says "sent / not sent", so the reason is worked out from the game state.
+-- (Throttled pieces never get here: ChatThrottleLib retries them itself.)
 function GH:OnSendFailed(info)
 	local why
 	if self:InLockdown() then
 		why = "messages are paused (boss fight or PvP match)"
 	elseif not IsInGuild() then
 		why = "not in a guild"
+		self.notInGuild = true -- until PLAYER_GUILD_UPDATE
 	elseif self:IsTrial() then
 		why = "trial account"
 		self:CheckTrialAccount()
 	elseif info.target and not self:IsOnline(info.target) then
 		why = "player went offline"
+		self.goneTargets[info.target] = GetTime() -- their waiting answers are dropped; no pause
 	else
 		why = "the game refused it"
+		self:BudgetBackOff()
 	end
 	self:Debug("|cffff6060%s was NOT sent: %s|r", info.mtype, why)
 	if self.OnProfSendFailed then self:OnProfSendFailed(info) end -- recipe lists back off
@@ -142,14 +246,20 @@ end
 -- Lockdown ended (event or 5-second check): send what was kept.
 function GH:FlushHeld()
 	if self:InLockdown() then return end
-	if self.lockdownTimer then
-		self:CancelTimer(self.lockdownTimer)
-		self.lockdownTimer = nil
+	if self.lockdownJob then
+		self:Cancel("comm", "lockdown")
+		self.lockdownJob = nil
 	end
 	for key, h in pairs(self.held) do
 		if h.lockdown then
 			self.held[key] = nil
-			self:SendMsg(h[1], h[2], h[3], h[4])
+			if h[2] ~= nil then
+				self:SendMsg(h[1], h[2], h[3], h[4])
+			elseif h.text then -- came from the budget queue already serialized
+				local mt = MsgType(h[1])
+				self:Enqueue({ key = key, mtype = h[1], text = h.text, target = h[3], prio = h[4], class = mt.class,
+					bucket = self:BudgetBucket(h[3]), pieces = Pieces(h.text), t = GetTime() }, mt.latest)
+			end
 		end
 	end
 end
@@ -212,6 +322,10 @@ function GH:OnCommReceived(prefix, text, distribution, sender)
 		self:Debug("ignored unknown type %s from %s", mtype, sender)
 		return
 	end
+	if not self:TypeOn(mtype) then
+		self:Debug("ignored %s from %s (that part is switched off)", mtype, U.ShortName(sender))
+		return
+	end
 
 	local ok, data = self:Deserialize(body)
 	if not ok or type(data) ~= "table" then
@@ -263,13 +377,24 @@ function GH:SelfInfo()
 	-- group size (g, r) too, so players who log in learn it; v0.1.2 clients ignore these fields
 	local g, r, gk = self:OwnGroupShare()
 	if gk then self.lastGroupKey = gk end
-	return {
+	local info = {
 		v = self.VERSION,
 		class = m and m.class, level = m and m.level, ts = m and m.ts,
 		inst = IsInInstance() and true or false,
 		afk = UnitIsAFK("player") and true or false,
 		g = g, r = r and 1 or nil,
 	}
+	-- the bundle record (Features.lua): whole if HB still fits one piece, else only its hash.
+	-- Older clients ignore both fields.
+	local b = self.OwnBundle and self:OwnBundle()
+	if b then
+		info.b = b
+		if #self:Serialize(info) + 12 > 254 then
+			info.b = nil
+			info.bh = self:BundleHash(b)
+		end
+	end
+	return info
 end
 
 -- Store what HELLO/HB told us about the sender.
@@ -284,6 +409,7 @@ function GH:ReadSelfInfo(sender, data)
 		ts = data.ts, class = data.class, level = data.level, version = data.v, lastSeen = U.Now(),
 	})
 	if rec then self:MergeMember(sender, rec) end
+	if type(data.b) == "table" and self.ReadBundle then self:ReadBundle(sender, data.b, true) end
 	self:RefreshBoard()
 end
 
@@ -346,7 +472,7 @@ end
 ------------------------------------------------------------------------
 function GH:SendBigTest()
 	if not IsInGuild() then return self:Msg(L.NOT_IN_GUILD) end
-	if GetTime() - (self.lastSent.TEST or -1000) < MIN_INTERVAL.TEST then
+	if GetTime() - (self.lastSent.TEST or -1000) < MsgType("TEST").min then
 		return self:Msg(L.TEST_WAIT)
 	end
 	local parts, n = {}, 0

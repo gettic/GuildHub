@@ -907,7 +907,7 @@ function GH:InitProfTooltip()
 	if not (TDP and TDP.AddTooltipPostCall and kind) then return end
 	self.profTooltipHooked = true
 	TDP.AddTooltipPostCall(kind, function(tt, data)
-		if not GH.db.profile.profTooltip or InCombatLockdown() then return end
+		if not GH.db.profile.profTooltip or InCombatLockdown() or not GH.profStarted then return end
 		if type(tt) ~= "table" or not tt.AddLine or type(data) ~= "table" then return end
 		local ok, line = pcall(function()
 			local id = data.id
@@ -957,18 +957,28 @@ function GH:RefreshProfTab()
 	end
 end
 
+-- Professions on the registry: switchable (Settings > Features, or an officer for the guild).
+-- Off = no events, no jobs, no PROF/RREQ/RLIST sent or handled, no tooltip line, no tab.
+GH:RegisterFeature({
+	key = "prof", name = "OPT_FEAT_PROF",
+	messages = {
+		PROF  = { class = "normal", min = 60, keep = true, latest = true }, -- tos check: at most one per minute
+		RREQ  = { class = "normal", min = 3 },  -- recipe list request (per target)
+		RLIST = { class = "bulk", min = 0 },    -- recipe list answers: paced here (bytes per second)
+	},
+	enable = function() GH:InitProfessions() end,
+	disable = function()
+		GH.profStarted = nil
+		GH.rlistQueue, GH.profReq = {}, nil
+		if GH.RefreshProfTab then GH:RefreshProfTab() end
+	end,
+})
+
 function GH:InitProfessions()
-	if self.profEv then return end
-	local ev = CreateFrame("Frame")
-	self.profEv = ev
+	if self.profStarted then return end
+	self.profStarted = true
 	local pendingScan, pendingSkills
-	for _, e in ipairs({ "TRADE_SKILL_SHOW", "TRADE_SKILL_LIST_UPDATE", "NEW_RECIPE_LEARNED", "SKILL_LINES_CHANGED",
-		"TRAINER_SHOW", "TRAINER_CLOSED", "PLAYER_REGEN_ENABLED" }) do
-		if not (C_EventUtils and C_EventUtils.IsEventValid) or C_EventUtils.IsEventValid(e) then
-			pcall(ev.RegisterEvent, ev, e)
-		end
-	end
-	ev:SetScript("OnEvent", function(_, event, a1)
+	local function OnProfEvent(event, a1)
 		if event == "TRAINER_SHOW" then GH.atTrainer = true
 		elseif event == "TRAINER_CLOSED" then GH.atTrainer = false
 		elseif event == "NEW_RECIPE_LEARNED" then GH:OnRecipeLearned(a1)
@@ -981,15 +991,20 @@ function GH:InitProfessions()
 			if GH.profScanAfterCombat then GH.profScanAfterCombat = nil; GH:ScanOpenWindow() end
 		elseif not pendingScan then -- TRADE_SKILL_SHOW / LIST_UPDATE
 			pendingScan = true
-			GH:ScheduleTimer(function() pendingScan = false; GH:ScanOpenWindow() end, 1)
+			GH:ScheduleTimer(function() pendingScan = false; if GH.profStarted then GH:ScanOpenWindow() end end, 1)
 		end
-	end)
+	end
+	for _, e in ipairs({ "TRADE_SKILL_SHOW", "TRADE_SKILL_LIST_UPDATE", "NEW_RECIPE_LEARNED", "SKILL_LINES_CHANGED",
+		"TRAINER_SHOW", "TRAINER_CLOSED", "PLAYER_REGEN_ENABLED" }) do
+		self:On("prof", e, OnProfEvent)
+	end
 	self:ReadOwnSkills()
 	self:InitProfTooltip()
-	self:ScheduleRepeatingTimer("ProfFetchTick", 3)
-	self:ScheduleRepeatingTimer("RListTick", 0.5)
+	self:Every("prof", "fetch", 3, function() GH:ProfFetchTick() end)
+	self:Every("prof", "rlist", 0.5, function() GH:RListTick() end)
 	-- our summary 20 s after HELLO (then on changes, at most once per 60 s)
 	self:ScheduleTimer(function()
+		if not GH.profStarted then return end
 		GH.profReady = true
 		GH:ReadOwnSkills()
 		GH:QueueOwnProf()

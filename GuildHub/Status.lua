@@ -502,9 +502,8 @@ local function IsUsable(...)
 	return true
 end
 
--- Event frame for the activity (own frame, so it doesn't clash with the AceEvent handlers in Core).
-local ev = CreateFrame("Frame")
-ev:SetScript("OnEvent", function(_, event, ...)
+-- Activity events (through the one dispatcher, Events.lua).
+local function OnStatusEvent(event, ...)
 	if not GH.started then return end
 	if event == "GROUP_ROSTER_UPDATE" then
 		GH:OnGroupChanged()
@@ -536,22 +535,32 @@ ev:SetScript("OnEvent", function(_, event, ...)
 	if event == "ZONE_CHANGED_NEW_AREA" or event == "PLAYER_ENTERING_WORLD" then
 		GH:RefreshBoard() -- own row zone is read live
 	end
-end)
+end
+
+-- The status board on the registry (core: always on). Its messages: STATUS and GRP.
+GH:RegisterFeature({
+	key = "status", core = true,
+	enable = function() GH:InitStatus() end, -- activity checks and the 1-hour clear
+	messages = {
+		STATUS = { class = "live", min = 10, keep = true, latest = true },
+		GRP    = { class = "live", min = 15, keep = true, latest = true }, -- also waits for 2 s without roster changes
+	},
+})
 
 function GH:InitStatus()
 	if self.statusStarted then return end
 	self.statusStarted = true
-	ev:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
+	self:On("status", "UNIT_SPELLCAST_SUCCEEDED", OnStatusEvent, "player")
 	for _, e in ipairs({ "QUEST_TURNED_IN", "PLAYER_XP_UPDATE", "PLAYER_LEVEL_UP", "PLAYER_FLAGS_CHANGED",
 		"PLAYER_UPDATE_RESTING", "ZONE_CHANGED_NEW_AREA", "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_ENABLED",
 		"GROUP_ROSTER_UPDATE" }) do
-		ev:RegisterEvent(e)
+		self:On("status", e, OnStatusEvent)
 	end
 	self:ScanMyGroup()
 	local xp = UnitXP("player")
 	if not U.IsSecret(xp) then self.lastXP = xp end
-	self:ScheduleRepeatingTimer("EvalActivity", EVAL_SECONDS)
-	self:ScheduleRepeatingTimer("CheckExpiry", EXPIRY_SECONDS)
+	self:Every("status", "evalActivity", EVAL_SECONDS, function() GH:EvalActivity() end)
+	self:Every("status", "checkExpiry", EXPIRY_SECONDS, function() GH:CheckExpiry() end)
 	self:CheckExpiry()
 	self:EvalActivity()
 end

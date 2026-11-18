@@ -54,10 +54,11 @@ end
 function GH:OnEnable()
 	self:InitComm()       -- Comm.lua
 	self:InitRoster()     -- Roster.lua
-	self:RegisterEvent("PLAYER_GUILD_UPDATE", "OnGuildChanged")
-	self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnEnteringWorld")
-	self:RegisterEvent("PLAYER_LEVEL_UP", "OnLevelUp")
-	self:RegisterEvent("PLAYER_LOGOUT", "OnLogout")
+	-- events go through the one dispatcher (Events.lua)
+	self:On("core", "PLAYER_GUILD_UPDATE", function(...) GH:OnGuildChanged(...) end)
+	self:On("core", "PLAYER_ENTERING_WORLD", function(...) GH:OnEnteringWorld(...) end)
+	self:On("core", "PLAYER_LEVEL_UP", function(...) GH:OnLevelUp(...) end)
+	self:On("core", "PLAYER_LOGOUT", function(...) GH:OnLogout(...) end)
 
 	self:CheckTrialAccount()
 	self:InitMinimapButton() -- UI\MainFrame.lua
@@ -77,11 +78,13 @@ function GH:Startup()
 	self:MigrateOwnKey()  -- Store.lua
 	self:RequestRoster()
 	self:Prune()
-	self:ScheduleRepeatingTimer("RequestRoster", self.ROSTER_SECONDS)
-	self:ScheduleRepeatingTimer("SendHeartbeat", self.HEARTBEAT_SECONDS)
-	self:ScheduleRepeatingTimer("Prune", 86400)
-	self:InitStatus()     -- Status.lua: activity checks and the 1-hour clear
-	self:InitProfessions() -- Professions.lua: own skills, window scans, recipe lists, tooltip line
+	-- repeating jobs on the one ticker (Events.lua)
+	self:Every("core", "roster", self.ROSTER_SECONDS, function() GH:RequestRoster() end)
+	self:Every("core", "heartbeat", self.HEARTBEAT_SECONDS, function() GH:SendHeartbeat() end)
+	self:Every("core", "prune", 86400, function() GH:Prune() end)
+	-- every feature that is on (Features.lua), in load order: Status.lua (activity checks, the
+	-- 1-hour clear), Professions.lua (skills, scans, recipe lists, tooltip), Features\Recorders.lua
+	self:EnableFeatures()
 
 	-- HELLO goes out once the guild list has loaded (Roster.lua calls OnRosterReady),
 	-- or after 15 s at the latest.
@@ -141,6 +144,8 @@ function GH:OnSlash(input)
 		self:TestUI() -- UI\MainFrame.lua
 	elseif cmd == "test" and rest == "prof" then
 		self:TestProf() -- Professions.lua
+	elseif cmd == "test" and rest == "api" then
+		self:TestApi() -- ApiTest.lua
 	elseif cmd == "selftest" then
 		ns.SelfTest:Start(rest == "full" and "full" or "quick") -- SelfTest.lua
 	elseif cmd == "options" or cmd == "config" or cmd == "settings" then
@@ -154,6 +159,7 @@ function GH:OnSlash(input)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_TEST2)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_TEST3)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_TEST4)
+		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_TESTAPI)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_SELFTEST)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_OPTIONS)
 	end
@@ -198,5 +204,10 @@ function GH:PrintStatus()
 	end
 	if #list <= 1 then
 		DEFAULT_CHAT_FRAME:AddMessage(L.STATUS_NONE)
+	end
+	local h = self.RecorderCounts and self:RecorderCounts()
+	if h then
+		DEFAULT_CHAT_FRAME:AddMessage(L.STATUS_HISTORY:format(h.first, h.hours, h.kills,
+			self:BudgetSent(600, "guild"), self:BudgetSent(600, "whisper")))
 	end
 end

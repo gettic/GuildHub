@@ -65,15 +65,14 @@ end
 -- The game reports a blocked call with ADDON_ACTION_BLOCKED / ADDON_ACTION_FORBIDDEN.
 function GH:InitInviteWatch()
 	if self.inviteWatch then return end
-	local f = CreateFrame("Frame")
-	f:RegisterEvent("ADDON_ACTION_BLOCKED")
-	f:RegisterEvent("ADDON_ACTION_FORBIDDEN")
-	f:SetScript("OnEvent", function(_, _, addon, func)
+	local function OnBlocked(_, addon, func)
 		if addon ~= "GuildHub" or not GH.lastInvite then return end
 		if type(func) == "string" and not U.IsSecret(func) and not func:find("Invite") then return end
 		GH:UseInviteFallback()
-	end)
-	self.inviteWatch = f
+	end
+	self:On("invite", "ADDON_ACTION_BLOCKED", OnBlocked)  -- Events.lua dispatcher
+	self:On("invite", "ADDON_ACTION_FORBIDDEN", OnBlocked)
+	self.inviteWatch = true
 end
 
 ------------------------------------------------------------------------
