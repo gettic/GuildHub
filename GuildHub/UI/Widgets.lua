@@ -32,6 +32,11 @@ W.ART = {
 	divider = "Options_HorizontalDivider",   -- group header line
 	rowHighlight = "Interface\\QuestFrame\\UI-QuestTitleHighlight",
 	toastIcon = "Interface\\Icons\\INV_Misc_GroupNeedMore",
+	card = "TooltipBackdropTemplate",         -- the card that asks (UI\Card.lua; via W.Popup)
+	-- guildmates' map dots (UI\MapPins.lua): Blizzard's group-member dot (used by Forever's
+	-- UnitPositionFrameTemplates), tinted in the class colour; fallback a white square masked round
+	dot = { atlas = "WhiteCircle-RaidBlips", file = "Interface\\Buttons\\WHITE8X8",
+		mask = "Interface\\CharacterFrame\\TempPortraitAlphaMask" },
 }
 
 -- Blizzard's font colours (read from the game when there, else the same values).

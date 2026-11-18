@@ -6,7 +6,10 @@
 --   defaults = { profile = {}, char = {} }, -- merged into the saved-data defaults (Store.lua)
 --   enable = fn, disable = fn,              -- called at start-up (if on) and when switched
 --   messages = { TYPE = { class = "live"|"normal"|"bulk", min = seconds, keep = true (held in
---                lockdown), latest = true (a newer one replaces a waiting one) } },
+--                lockdown), latest = true (a newer one replaces a waiting one),
+--                gate = fn(GH, data, target) -> ok (re-checked before the real send),
+--                onSend = fn(GH, item) (it really left),
+--                urgent = fn(data) -> true: skips the pacing wait and replaces a held one (POS 'off') } },
 --   bundle = { field = { get = fn() -> value, clean = fn(v) -> v|nil, store = fn(name, v) } },
 --   selftest = fn(api),                     -- adds checks to /ghub selftest
 --   -- UI hook keys (reserved now, read by the shared UI parts from 0.4.0-beta.3 on):
@@ -41,6 +44,11 @@ function GH:RegisterFeature(f)
 		self.msgTypes[mtype] = {
 			owner = f.key, class = CLASSES[m.class] and m.class or "normal",
 			min = m.min or 5, keep = m.keep and true or false, latest = m.latest and true or false,
+			-- 0.4.0-b2: gate(GH, data, target) -> may it leave now? (checked when asked, again before the
+			-- real send); onSend(GH, item) is told when it really leaves (POS: privacy counters)
+			gate = type(m.gate) == "function" and m.gate or nil,
+			onSend = type(m.onSend) == "function" and m.onSend or nil,
+			urgent = type(m.urgent) == "function" and m.urgent or nil,
 		}
 	end
 	if self.started then self:ApplyFeatures() end -- registered late (tests): start it like the others
@@ -162,6 +170,68 @@ function GH:Hooks(kind)
 		end
 	end
 	return r
+end
+
+------------------------------------------------------------------------
+-- Fair trade (the user's rule, 2026-11-18: "if you don't share something you then can't use it at
+-- all, so a fair trade: share and then you can use it too"). Each sharing item says what it
+-- unlocks; whoever doesn't share it can't use the matching feature. Trial and Veteran accounts
+-- can't send addon messages, so they count as sharing nothing. The status board stays open to all.
+--   GH:RegisterShare{ key = "prof", order = 3, optKey = "shareProf" (Settings key), name, desc
+--     (Locale keys), feature = "prof" (the feature it belongs to), get = fn(GH) -> bool, set = fn(GH, on) }
+------------------------------------------------------------------------
+GH.shareItems, GH.shareOrder = {}, {}
+
+function GH:RegisterShare(s)
+	assert(type(s) == "table" and type(s.key) == "string" and type(s.get) == "function" and type(s.set) == "function",
+		"RegisterShare: needs key, get, set")
+	assert(not self.shareItems[s.key], "share item used twice: " .. s.key)
+	self.shareItems[s.key] = s
+	local list = self.shareOrder
+	list[#list + 1] = s.key
+	table.sort(list, function(a, b) return (self.shareItems[a].order or 99) < (self.shareItems[b].order or 99) end)
+	return s
+end
+
+-- The player's own setting for this item (true = shares it).
+function GH:Shares(key)
+	local s = self.shareItems[key]
+	if not s then return false end
+	local ok, v = pcall(s.get, self)
+	return ok and v and true or false
+end
+
+-- May the player use what this item unlocks? Returns ok, why ("trial" / "feature" / "off").
+function GH:CanUse(key)
+	local s = self.shareItems[key]
+	if not s then return true end
+	if self.cannotSend then return false, "trial" end
+	if s.feature and not self:FeatureOn(s.feature) then return false, "feature" end
+	if not self:Shares(key) then return false, "off" end
+	return true
+end
+
+-- The locked note: trial accounts get their own reason, everybody else the item's note.
+function GH:LockedText(key, offText)
+	local _, why = self:CanUse(key)
+	if why == "trial" then return ns.L.FAIR_TRIAL end
+	return offText
+end
+
+-- Turns an item on or off (Settings, the "Share" button on a locked note).
+function GH:SetShare(key, on)
+	local s = self.shareItems[key]
+	if not s then return end
+	s.set(self, on and true or false)
+	self:OnShareChanged(key)
+end
+
+-- Everything that shows unlocked parts is drawn again.
+function GH:OnShareChanged()
+	if self.RefreshBoard then self:RefreshBoard() end
+	if self.RefreshProfTab then self:RefreshProfTab() end
+	if self.MapRedraw then self:MapRedraw() end
+	if self.optionsChanged then self:optionsChanged() end
 end
 
 ------------------------------------------------------------------------

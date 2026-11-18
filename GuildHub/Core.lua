@@ -90,6 +90,8 @@ function GH:Startup()
 	-- or after 15 s at the latest.
 	self.helloPending = true
 	self:ScheduleTimer(function() if GH.helloPending then GH:SendHello() end end, 15)
+	-- the welcome card that asks (Features\Map.lua, UI\Card.lua): a little after start-up
+	if self.ShowWelcome then self:ScheduleTimer(function() GH:ShowWelcome() end, self.WELCOME_DELAY or 10) end
 end
 
 function GH:OnRosterReady()
@@ -146,6 +148,8 @@ function GH:OnSlash(input)
 		self:TestProf() -- Professions.lua
 	elseif cmd == "test" and rest == "api" then
 		self:TestApi() -- ApiTest.lua
+	elseif cmd == "test" and rest == "map" then
+		self:TestMap() -- UI\MapPins.lua
 	elseif cmd == "selftest" then
 		ns.SelfTest:Start(rest == "full" and "full" or "quick") -- SelfTest.lua
 	elseif cmd == "options" or cmd == "config" or cmd == "settings" then
@@ -160,6 +164,7 @@ function GH:OnSlash(input)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_TEST3)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_TEST4)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_TESTAPI)
+		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_TESTMAP)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_SELFTEST)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_OPTIONS)
 	end

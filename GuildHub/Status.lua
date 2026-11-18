@@ -611,6 +611,14 @@ function GH:SetShareGroup(on)
 	self:SendGroup()
 end
 
+-- Fair trade (Features.lua): no group size shared = no GROUP column for you either.
+GH:RegisterShare({
+	key = "group", order = 2, optKey = "shareGroup", feature = "status",
+	name = "OPT_SHAREGROUP", desc = "OPT_SHAREGROUP_DESC",
+	get = function(gh) return gh:SharesGroup() end,
+	set = function(gh, on) gh:SetShareGroup(on) end,
+})
+
 -- Our own group: size (0-40) and raid flag, or nil if the game hides it.
 function GH:GroupInfo()
 	local n = GetNumGroupMembers and GetNumGroupMembers()
@@ -695,6 +703,8 @@ end
 
 -- Text for the GROUP column, a colour kind ("yours", "solo", "other") and the tooltip line.
 function GH:GroupText(d)
+	-- fair trade: a player who doesn't share their own group size sees "-" for everyone
+	if not self:CanUse("group") then return "-", "solo", self:LockedText("group", L.TIP_GRP_LOCKED) end
 	local g = d.grp
 	local size
 	if g and g.g > 0 then size = (g.r and L.GRP_RAID or L.GRP_PARTY):format(g.g) end

@@ -87,8 +87,46 @@ end
 
 local BuildOptionsBase
 
+-- 0.4.0-b2: "What I share" (top of the page, orders 2-9): one line per sharing item from the fair
+-- trade registry (Features.lua), each saying that off also hides what others share. Plus the
+-- Map section (minimap dots).
+local function AddShareOptions(args)
+	args.shareHeader = { type = "header", order = 2, name = L.OPT_SHARE_HDR }
+	args.shareInfo = {
+		type = "description", order = 2.01,
+		name = function()
+			if GH.cannotSend then return "|cffff9933" .. L.FAIR_TRIAL .. "|r" end
+			return L.OPT_SHARE_INFO
+		end,
+	}
+	for i, key in ipairs(GH.shareOrder) do
+		local s = GH.shareItems[key]
+		args[s.optKey or ("share_" .. key)] = {
+			type = "toggle", order = 2.1 + i * 0.01, width = "full",
+			name = function() return (L[s.name] or key) .. L.OPT_SHARE_OFFNOTE end,
+			desc = function()
+				local d = L[s.desc] or ""
+				if s.feature and not GH:FeatureOn(s.feature) then d = d .. "\n|cffff8040" .. L.OPT_SHARE_FEATOFF .. "|r" end
+				return d
+			end,
+			get = function() return GH:Shares(key) end,
+			set = function(_, v) GH:SetShare(key, v) end,
+			disabled = function() return GH.cannotSend or (s.feature ~= nil and not GH:FeatureOn(s.feature)) end,
+		}
+	end
+	args.mapHeader = { type = "header", order = 19.52, name = L.OPT_MAP_HDR }
+	args.mapMinimap = {
+		type = "toggle", order = 19.53, width = "full",
+		name = L.OPT_MAP_MINIMAP, desc = L.OPT_MAP_MINIMAP_DESC,
+		get = function() return GH.db.profile.mapMinimap end,
+		set = function(_, v) GH.db.profile.mapMinimap = v and true or false; GH:MapRedraw() end,
+		disabled = function() return not GH:FeatureOn("map") end,
+	}
+end
+
 local function BuildOptions()
 	local t = BuildOptionsBase()
+	AddShareOptions(t.args)
 	AddFeatureOptions(t.args)
 	return t
 end
@@ -144,12 +182,6 @@ BuildOptionsBase = function()
 				type = "description", order = 17, name = L.OPT_MUTED_NONE,
 				hidden = function() return next(GH.db.profile.alerts.muted) ~= nil end,
 			},
-			shareGroup = {
-				type = "toggle", order = 17.5, width = "full",
-				name = L.OPT_SHAREGROUP, desc = L.OPT_SHAREGROUP_DESC,
-				get = function() return GH:SharesGroup() end,
-				set = function(_, v) GH:SetShareGroup(v) end,
-			},
 			showNoAddon = {
 				type = "toggle", order = 18, width = "full", name = L.OPT_NOADDON,
 				get = function() return GH.db.profile.showNoAddon end,
@@ -161,13 +193,6 @@ BuildOptionsBase = function()
 				set = function(_, v) GH.db.profile.minimap.hide = v; GH:UpdateMinimapButton() end,
 			},
 			profHeader = { type = "header", order = 19.2, name = L.OPT_PROF_HDR },
-			shareProf = {
-				type = "toggle", order = 19.3, width = "full",
-				name = L.OPT_SHAREPROF, desc = L.OPT_SHAREPROF_DESC,
-				get = function() return GH:SharesProfessions() end,
-				set = function(_, v) GH:SetShareProfessions(v); GH:RefreshProfTab() end,
-			},
-			shareProfInfo = { type = "description", order = 19.4, name = L.OPT_SHAREPROF_DESC },
 			profTooltip = {
 				type = "toggle", order = 19.5, width = "full",
 				name = L.OPT_PROFTIP, desc = L.OPT_PROFTIP_DESC,

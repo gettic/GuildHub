@@ -125,6 +125,16 @@ function GH:RepairSaved()
 		end
 		if badFeat then fixed[#fixed + 1] = "features" end
 	end
+	-- 0.4.0-b2: the map answer (per character). Anything odd becomes "ask": a repair never turns
+	-- position sharing on.
+	local c = db.char
+	if type(c) == "table" then
+		local v = rawget(c, "mapShare")
+		if v ~= nil and v ~= "ask" and v ~= "yes" and v ~= "no" then
+			c.mapShare = "ask"
+			fixed[#fixed + 1] = "mapShare"
+		end
+	end
 	local g = db.global
 	if type(g) == "table" and type(g.guilds) ~= "table" then
 		g.guilds = {}

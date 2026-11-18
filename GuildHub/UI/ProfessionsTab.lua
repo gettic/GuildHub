@@ -390,6 +390,25 @@ function GH:BuildProfessionsTab(page)
 	fr:SetWidth(400)
 	tab.footerRight = fr
 
+	-- fair trade (Features.lua): not sharing your professions = only this note, with a Share button
+	local lock = W.Inset(page)
+	lock:SetPoint("TOPLEFT", 2, 0)
+	lock:SetPoint("BOTTOMRIGHT", -2, 24)
+	lock.text = W.Text(lock, "GameFontHighlight")
+	lock.text:SetPoint("TOP", 0, -150)
+	lock.text:SetWidth(520)
+	lock.text:SetWordWrap(true)
+	lock.text:SetJustifyH("CENTER")
+	lock.button = W.Button(lock, L.FAIR_PROF_BUTTON, 200, 26, "GameFontNormal")
+	lock.button:SetPoint("TOP", lock.text, "BOTTOM", 0, -16)
+	lock.button:SetScript("OnClick", function()
+		GH:SetShare("prof", true)
+		GH:WantRecipeLists()
+		GH:DrawProfessionsTab(true)
+	end)
+	lock:Hide()
+	tab.lock = lock
+
 	page:HookScript("OnHide", function() if tab.popup then tab.popup:Hide() end end)
 	-- while shown: online states and "x ago" every 15 s
 	page:SetScript("OnUpdate", function(_, elapsed)
@@ -411,6 +430,20 @@ end
 function GH:DrawProfessionsTab(toTop)
 	local tab = self.profTab
 	if not tab then return end
+	-- fair trade: locked = only the note (trial accounts get their own reason, and no button)
+	local can, why = self:CanUse("prof")
+	for _, part in ipairs({ tab.search, tab.filter, tab.online, tab.listInset, tab.panel, tab.footer, tab.footerRight }) do
+		part:SetShown(can)
+	end
+	if tab.lock then
+		tab.lock:SetShown(not can)
+		if not can then
+			tab.lock.text:SetText(self:LockedText("prof", L.FAIR_PROF_LOCKED))
+			tab.lock.button:SetShown(why == "off")
+			if tab.popup then tab.popup:Hide() end
+			return
+		end
+	end
 	local db = self.db.profile
 	local filter = db.profFilter
 	local valid = false

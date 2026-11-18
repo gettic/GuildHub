@@ -54,6 +54,7 @@ function GH:RebuildRoster()
 	if self.ProfRosterCheck then self:ProfRosterCheck(roster) end -- players who left: professions deleted
 	if self.RecordRoster then self:RecordRoster(roster) end         -- guild history (Features\Recorders.lua)
 	if self.started then self:ApplyFeatures() end -- a guild switch counts only while its officer still is one
+	if self.MapRosterCheck then self:MapRosterCheck() end -- offline players' map dots, zone counts
 
 	if not self.rosterReady then
 		self.rosterReady = true

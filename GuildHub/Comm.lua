@@ -88,14 +88,31 @@ function GH:SendMsg(mtype, data, target, prio)
 		return
 	end
 	local mt = MsgType(mtype)
+	-- a type with its own gate (POS: only after the player's yes, never in instances ...)
+	if mt.gate and not mt.gate(self, data, target) then
+		self:Debug("not sent: %s (not allowed right now)", mtype)
+		return
+	end
 	local key = target and (mtype .. ":" .. target) or mtype
 
-	-- pacing per type
+	-- pacing per type. An urgent one (e.g. POS 'off') replaces a held one and skips the type's gap;
+	-- urgent may return a number = its own smaller gap between two urgent ones.
 	local wait = mt.min - (GetTime() - (self.lastSent[key] or -1000))
+	local urgent = mt.urgent and mt.urgent(data)
+	if urgent then
+		local h = self.held[key]
+		if h and h.timer and not h.urgent then
+			self:CancelTimer(h.timer)
+			self.held[key] = nil
+		end
+		self.urgentAt = self.urgentAt or {}
+		wait = type(urgent) == "number" and (urgent - (GetTime() - (self.urgentAt[key] or -1000))) or 0
+		if wait <= 0 then self.urgentAt[key] = GetTime() end
+	end
 	if wait > 0 then
 		local h = self.held[key]
 		local timer = h and h.timer or self:ScheduleTimer("SendHeld", wait + 0.1, key)
-		self.held[key] = { mtype, data, target, prio, timer = timer }
+		self.held[key] = { mtype, data, target, prio, timer = timer, urgent = urgent and true or nil }
 		return
 	end
 
@@ -107,7 +124,8 @@ function GH:SendMsg(mtype, data, target, prio)
 
 	local text = tconcat({ self.PROTO, mtype, self:Serialize(data) }, "\t")
 	local item = { key = key, mtype = mtype, text = text, target = target, prio = prio, class = mt.class,
-		bucket = self:BudgetBucket(target), pieces = Pieces(text), t = GetTime() }
+		bucket = self:BudgetBucket(target), pieces = Pieces(text), t = GetTime(),
+		data = (mt.gate or mt.onSend) and data or nil }
 	-- the budget: wait in the queue if there is no room (or others are already waiting)
 	if self:QueueWaiting(item.bucket, item.class) or not self:BudgetAllows(item.class, item.pieces, item.bucket) then
 		self:Enqueue(item, mt.latest)
@@ -166,8 +184,10 @@ function GH:FlushQueue()
 			local item = q[i]
 			if CLASS_RANK[item.class] == rank then
 				local bk = item.bucket .. ":" .. item.class
-				if not self:TypeOn(item.mtype) or (item.target and self.goneTargets[item.target]) then
-					table.remove(q, i) -- switched off meanwhile / the player went offline
+				local gate = MsgType(item.mtype).gate
+				if not self:TypeOn(item.mtype) or (item.target and self.goneTargets[item.target])
+					or (gate and not gate(self, item.data, item.target)) then
+					table.remove(q, i) -- switched off meanwhile / the player went offline / no longer allowed
 				elseif lockdown then
 					table.remove(q, i)
 					self:HoldForLockdown(item.key, item.mtype, nil, item.target, item.prio)
@@ -194,6 +214,8 @@ function GH:DoSend(item)
 	self:Debug("> %s to %s (%d chars, %d pieces, budget %d/10)", item.mtype,
 		item.target and U.ShortName(item.target) or "guild", #item.text, item.pieces, math.max(0, math.floor(free)))
 	if item.mtype == "REC" and self.OnRecSent then self:OnRecSent() end
+	local onSend = MsgType(item.mtype).onSend
+	if onSend then onSend(self, item) end
 	if self.goneTargets[item.target or ""] then self.goneTargets[item.target] = nil end
 	-- whisper to "Mira Ashford", not "Mira Ashford-Realm" (WoW Forever names); info keeps the key
 	self:SendCommMessage(self.PREFIX, item.text, channel, item.target and U.WhisperName(item.target),
@@ -383,6 +405,9 @@ function GH:SelfInfo()
 		inst = IsInInstance() and true or false,
 		afk = UnitIsAFK("player") and true or false,
 		g = g, r = r and 1 or nil,
+		-- 0.4.0-b2: "my map dot is still where it was" (Features\Map.lua); only through the same gate
+		-- as POS itself (after the yes, out in the world, no lockdown)
+		ps = (self.PosSharingNow and self:PosSharingNow()) and 1 or nil,
 	}
 	-- the bundle record (Features.lua): whole if HB still fits one piece, else only its hash.
 	-- Older clients ignore both fields.
@@ -410,6 +435,7 @@ function GH:ReadSelfInfo(sender, data)
 	})
 	if rec then self:MergeMember(sender, rec) end
 	if type(data.b) == "table" and self.ReadBundle then self:ReadBundle(sender, data.b, true) end
+	if self.MapReadHB then self:MapReadHB(sender, data.ps) end -- keeps (or drops) the sender's map dot
 	self:RefreshBoard()
 end
 

@@ -367,6 +367,15 @@ function GH:SetShareProfessions(on)
 	end
 end
 
+-- Fair trade (Features.lua): no professions shared = no directory, recipe search, crafted-by tooltip
+-- line or rare-recipe feed, and no recipe lists fetched.
+GH:RegisterShare({
+	key = "prof", order = 3, optKey = "shareProf", feature = "prof",
+	name = "OPT_SHAREPROF", desc = "OPT_SHAREPROF_DESC",
+	get = function(gh) return gh:SharesProfessions() end,
+	set = function(gh, on) gh:SetShareProfessions(on) end,
+})
+
 ------------------------------------------------------------------------
 -- Receiving
 ------------------------------------------------------------------------
@@ -489,7 +498,7 @@ end
 ------------------------------------------------------------------------
 -- The tab, the search or an item tooltip calls this: from now on missing lists are fetched.
 function GH:WantRecipeLists()
-	if self.profWanted then return end
+	if self.profWanted or not self:CanUse("prof") then return end -- fair trade: not sharing = no lists
 	self.profWanted = true
 	self:Debug("recipe lists: fetching what is missing")
 end
@@ -508,7 +517,7 @@ function GH:ProfFetchTick()
 		if not req.got then self.profBackoff[req.to] = now + SRC_BACKOFF end
 		self.profReq = nil
 	end
-	if not (self.profWanted and CanTalk()) then return end
+	if not (self.profWanted and CanTalk() and self:CanUse("prof")) then return end
 	if now - (self.profReqLast or -1000) < REQ_GAP then return end
 	local gdb = self:GetGuildDB()
 	if not gdb then return end
@@ -793,7 +802,7 @@ function GH:BuildProfRows(opts)
 	opts = opts or {}
 	local gdb = self:GetGuildDB()
 	local rows, crafters = {}, 0
-	if not gdb then return rows, 0 end
+	if not gdb or not self:CanUse("prof") then return rows, 0 end -- fair trade
 	local me = self:MyName()
 	local groups = {}
 	for name, m in pairs(gdb.members) do
@@ -839,7 +848,7 @@ function GH:BuildRecipeRows(opts)
 	opts = opts or {}
 	local q = type(opts.search) == "string" and opts.search:lower() or ""
 	local rows = {}
-	if #q < 2 then return rows end
+	if #q < 2 or not self:CanUse("prof") then return rows end -- fair trade
 	local idx = self:ProfIndex()
 	for id, list in pairs(idx.byRecipe) do
 		local name = self:RecipeName(id)
@@ -865,6 +874,7 @@ end
 
 -- "Professions: Tailoring 300, Alchemy 285" for the status board tooltip.
 function GH:ProfLine(name)
+	if not self:CanUse("prof") then return nil end -- fair trade
 	local prof = MemberProf(name)
 	if not prof or next(prof.p) == nil then return nil end
 	local parts = {}
@@ -878,6 +888,7 @@ end
 -- Item tooltip: one added line "Guild Hub: crafted by ...". Never in combat; never replaces anything.
 function GH:TooltipCrafters(itemName)
 	if type(itemName) ~= "string" or U.IsSecret(itemName) or itemName == "" then return nil end
+	if not self:CanUse("prof") then return nil end -- fair trade: no crafted-by line
 	local idx = self:ProfIndex()
 	local ids = idx.byName[itemName:lower()]
 	if not ids then return nil end
@@ -1015,7 +1026,7 @@ end
 function GH:FeedLines(max)
 	local gdb = self:GetGuildDB()
 	local r = {}
-	if not gdb then return r end
+	if not gdb or not self:CanUse("prof") then return r end -- fair trade: no rare-recipe feed
 	for _, e in ipairs(gdb.feed) do
 		if type(e) == "table" and e.r and e.who then
 			r[#r + 1] = e

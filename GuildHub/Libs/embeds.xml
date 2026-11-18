@@ -10,8 +10,7 @@
 	<Include file="AceDB-3.0\AceDB-3.0.xml"/>
 	<Include file="AceGUI-3.0\AceGUI-3.0.xml"/>
 	<Include file="AceConfig-3.0\AceConfig-3.0.xml"/>
-	<!-- HereBeDragons is added in step 4 (guild map):
+	<!-- HereBeDragons (BSD 3-Clause, see HereBeDragons\LICENSE.txt): the guild map (0.4.0-beta.2) -->
 	<Script file="HereBeDragons\HereBeDragons-2.0.lua"/>
 	<Script file="HereBeDragons\HereBeDragons-Pins-2.0.lua"/>
-	-->
 </Ui>

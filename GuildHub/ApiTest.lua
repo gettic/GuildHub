@@ -222,6 +222,15 @@ Check("emote", function()
 	return valid .. "," .. (ok == true and yn(lock) or ok)
 end)
 Check("fish", function() return Exists(IsFishingLoot) end)
+-- 0.4.0-b2: HereBeDragons loaded, its pins on the world map, and the ignore check on our own name
+Check("hbd", function()
+	local core = LibStub and LibStub("HereBeDragons-2.0", true)
+	local pins = LibStub and LibStub("HereBeDragons-Pins-2.0", true)
+	local onMap = pins and WorldMapFrame and type(WorldMapFrame.dataProviders) == "table"
+		and pins.worldmapProvider and WorldMapFrame.dataProviders[pins.worldmapProvider] and "y" or "n"
+	local okI = GH.IsIgnored and pcall(GH.IsIgnored, GH, GH:MyName())
+	return yn(core) .. "," .. yn(pins) .. "," .. (pins and onMap or "-") .. "," .. (okI and tostring(GH.ignoreMode or "?") or "!")
+end)
 GH.API_CHECKS = checks
 
 -- Guild calendar events in the next 14 days (after OpenCalendar has loaded the data).

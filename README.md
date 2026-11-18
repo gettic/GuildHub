@@ -12,7 +12,9 @@ A guild hub for WoW Forever that lets guildmates see what everyone is doing, whe
 - A Professions tab: who has which profession, and who can make an item.
 - A "crafted by" line in item tooltips.
 
-Planned next: a guild map. It is not built yet.
+- Guild map dots: guildmates who share their position show on the world map and the minimap.
+
+Planned next: a Map tab in the window. It is not built yet.
 
 ## Status board
 
@@ -42,6 +44,30 @@ Open each of your profession windows once, so Guild Hub can read your recipes.
 
 **Privacy.** "Share my professions" in the settings is on by default. Turning it off tells the guild to forget your professions. Guild Hub only fetches recipe lists after you first use the Professions tab, the search or a tooltip, and sends them slowly to keep the chat channel free. Professions of players who leave the guild are deleted.
 
+## Guild map
+
+Guildmates who share their position show as class-coloured dots on the world map and the minimap. Hover a dot to see name, level, status and how long ago. The world map also shows how many guildmates are in each zone (from the guild list). Players on your ignore list get no dot.
+
+**Sharing your position.** The first time on each character, a small "Guild Hub" card asks: "Share my position" or "Not now". "Not now" asks again next login. Turning it off in Settings > What I share is a real no. Your position is:
+
+- sent only in the open world, never in dungeons, raids or battlegrounds
+- sent at most every 12 seconds, and only when you move
+- sent only to your guild, and never saved
+
+The Guild map section in Settings has a switch for the minimap dots. `/ghub test map` shows three made-up guildmates for 60 seconds, only on your screen.
+
+## Fair trade
+
+What you don't share, you can't see from others either:
+
+| If you don't share | You lose |
+|---|---|
+| Your position | The map dots (zone counts stay) |
+| Your professions | The Professions tab is locked, with a button to share |
+| Your group size | The GROUP column shows "-" |
+
+Trial and Veteran accounts can't share, so these parts are locked for them. The status board stays open to everyone. Settings > What I share lists each item.
+
 ## Install
 
 Copy the `GuildHub` folder into your WoW `AddOns` folder, then restart the game or reload the UI. Everyone in the guild needs the addon to see each other.
@@ -61,13 +87,16 @@ Copy the `GuildHub` folder into your WoW `AddOns` folder, then restart the game 
 | `/ghub test expire` | Make your status run out |
 | `/ghub test ui` | Show which Blizzard art your game gave the window (and a second line to copy) |
 | `/ghub test api` | Check which game functions this client has; shows one line to copy. Changes and sends nothing |
+| `/ghub test map` | Show three made-up guildmates on the map for 60 seconds (only on your screen) |
 | `/ghub test prof` | Show what Guild Hub knows about your own professions |
 
 ## Settings
 
-Click the gear button in the title bar of the `/ghub` window (left of the "-"), or use `/ghub options` or the minimap button's right-click. Click the gear again to go back to Status. The same settings are in Esc > Options > AddOns > Guild Hub. There you can switch off automatic activity, sharing your group size, sharing your professions, the "crafted by" tooltip line and the notes, unmute players, show or hide guildmates without Guild Hub, and hide the minimap button. The Guild Master sets which ranks count as officers.
+Click the gear button in the title bar of the `/ghub` window (left of the "-"), or use `/ghub options` or the minimap button's right-click. Click the gear again to go back to Status. The same settings are in Esc > Options > AddOns > Guild Hub. There you can switch off automatic activity, the "crafted by" tooltip line and the notes, unmute players, show or hide guildmates without Guild Hub, hide the minimap button, and turn the guild dots on the minimap on or off. The Guild Master sets which ranks count as officers.
 
-**Features.** The Features section lets you switch Professions on or off for yourself, and turn "Keep guild history on this computer" on or off (on by default). Officers can also switch a part off for the whole guild. They can only switch things off, never on, and the switch stops counting if they lose their officer rank.
+**What I share.** This is at the top of Settings. It has one line each for your position, your professions and your group size. Each line says "off = you also can't see others'" (see Fair trade). Trial and Veteran accounts can't share, so these lines are locked for them.
+
+**Features.** The Features section lets you switch Professions and the Guild map on or off for yourself, and turn "Keep guild history on this computer" on or off (on by default). Officers can also switch a part off for the whole guild. They can only switch things off, never on, and the switch stops counting if they lose their officer rank.
 
 **Guild history.** With "Keep guild history on this computer" on, Guild Hub saves these on your computer only. Nothing is sent to anyone:
 
@@ -109,15 +138,18 @@ The addon lives in `GuildHub\`. Files are loaded in this order (see `GuildHub_Fo
 | `Status.lua` | Status logic: presets, activity, alerts, board rows |
 | `Professions.lua` | Professions: reading recipes, sharing them, search, tooltip line |
 | `Features\Recorders.lua` | Guild history kept on this computer |
+| `Features\Map.lua` | Guild map: sharing and receiving positions |
 | `UI\Widgets.lua` | Buttons, text boxes and the alert note |
 | `UI\MainFrame.lua` | The window, the Status tab, the gear button and the minimap button |
 | `UI\StatusTab.lua` | The status board tab |
 | `UI\ProfessionsTab.lua` | The Professions tab |
 | `UI\MiniFrame.lua` | The small mini mode window |
+| `UI\Card.lua` | The "Share my position" card |
+| `UI\MapPins.lua` | Dots on the world map and minimap |
 | `Options.lua` | Settings (the Settings page in the window and the Options page) |
 | `ApiTest.lua` | The `/ghub test api` check |
 | `SelfTest.lua` | The `/ghub selftest` check |
 
 ## Credits
 
-Uses the embedded libraries Ace3 (BSD-style licence, see `GuildHub\Libs\Ace3-LICENSE.txt`) and HereBeDragons by Nevcairiel (BSD 3-Clause licence, see `GuildHub\Libs\HereBeDragons\LICENSE.txt`; not used until the guild map is built). They keep their own licences. Guild Hub itself is all rights reserved: you may download it and use it to play, but not copy, change or redistribute it (see `LICENSE`).
+Uses the embedded libraries Ace3 (BSD-style licence, see `GuildHub\Libs\Ace3-LICENSE.txt`) and HereBeDragons by Nevcairiel (BSD 3-Clause licence, see `GuildHub\Libs\HereBeDragons\LICENSE.txt`; used for the guild map dots). They keep their own licences. Guild Hub itself is all rights reserved: you may download it and use it to play, but not copy, change or redistribute it (see `LICENSE`).

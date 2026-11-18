@@ -310,6 +310,15 @@ end
 
 function ST.ProfParts()
     local t = GH.profTab or {}
+    -- fair trade: not sharing professions = only the locked note (trial accounts: no button)
+    if GH.CanUse and not GH:CanUse("prof") then
+        local lock = t.lock or {}
+        local _, why = GH:CanUse("prof")
+        return {
+            { name = "prof.lock", obj = t.lock },
+            { name = "prof.lockButton", obj = lock.button, opt = why ~= "off", shownOnly = why ~= "off" },
+        }
+    end
     return {
         { name = "prof.search", obj = t.search },
         { name = "prof.filter", obj = t.filter },
@@ -427,6 +436,15 @@ local function CheckFeatures()
             #(GH.sendQueue or {}), GH:BudgetSent(600, "guild")))
     end
     if GH.lastApiLine then Info("api line taken") end
+    -- fair trade: which sharing items are on (y/n, trial = t)
+    if GH.shareOrder then
+        local s = {}
+        for _, key in ipairs(GH.shareOrder) do
+            local ok, why = GH:CanUse(key)
+            s[#s + 1] = key .. "=" .. (ok and "y" or (why == "trial" and "t" or "n"))
+        end
+        Info("shares " .. table.concat(s, ","))
+    end
 end
 
 
@@ -458,8 +476,24 @@ local function StepProf()
     Finish()
 end
 
+-- 0.4.0-b2: the card that asks. A real card on screen is checked as it is; else a test card with
+-- test text is shown, checked and hidden again (no answer is saved, onClose is not called).
+local function CheckCard()
+    if not GH.CardFrame then return Skip("card", "(not loaded)") end
+    local f = GH.card
+    if f and f:IsShown() then return CheckGroup(GH:CardParts(), nil) end
+    f = GH:CardFrame()
+    GH:FillCard(f, { test = true, title = "Self-test card", text = "This card is a self-test. It closes by itself.",
+        note = "Nothing is saved.", buttons = { { label = "First" }, { label = "Second" } } })
+    f:Show()
+    local ok, err = pcall(CheckGroup, GH:CardParts(), nil)
+    f:Hide()
+    if not ok then Problem("ERR", "card", Short(err)) end
+end
+
 local function StepMain()
     CheckGroup(ST.MainParts(), Win())
+    Guard("card", CheckCard)
     if run.mode == "full" and GH:FeatureOn("prof") then
         -- the Professions tab (built on first show); Restore goes back to the page that was open
         run.state.prevTab = run.state.prevTab or GH.mainFrame.currentTab
