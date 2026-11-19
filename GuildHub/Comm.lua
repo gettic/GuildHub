@@ -207,7 +207,8 @@ function GH:FlushQueue()
 end
 
 function GH:DoSend(item)
-	local channel = item.target and "WHISPER" or "GUILD"
+	-- officer types (Guild Recruiter lists) go on OFFICER, never on GUILD; it counts in the guild bucket
+	local channel = item.target and "WHISPER" or (MsgType(item.mtype).officer and "OFFICER" or "GUILD")
 	self.lastSent[item.key] = GetTime()
 	local pend = self:BudgetHandOff(item.bucket, item.pieces)
 	local free = self:BudgetFree(item.bucket)
@@ -305,7 +306,7 @@ function GH:OnCommReceived(prefix, text, distribution, sender)
 		self:Debug("ignored a message from %s (too big: %d chars)", shown, #text)
 		return
 	end
-	if distribution ~= "GUILD" and distribution ~= "WHISPER" then
+	if distribution ~= "GUILD" and distribution ~= "WHISPER" and distribution ~= "OFFICER" then
 		self:Debug("ignored a message from %s (channel %s)", shown, U.CleanText(tostring(distribution), 20) or "?")
 		return
 	end
@@ -321,6 +322,13 @@ function GH:OnCommReceived(prefix, text, distribution, sender)
 	proto = tonumber(proto)
 	if not proto then
 		self:Debug("ignored a message from %s (unreadable format)", U.ShortName(sender))
+		return
+	end
+
+	-- OFFICER carries only officer types, and officer types come only on OFFICER (never GUILD/WHISPER)
+	local mtInfo = self.msgTypes[mtype]
+	if (distribution == "OFFICER") ~= (mtInfo ~= nil and mtInfo.officer == true) then
+		self:Debug("ignored %s from %s (wrong channel %s)", mtype, U.ShortName(sender), distribution)
 		return
 	end
 

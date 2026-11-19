@@ -331,7 +331,7 @@ function ST.ProfParts()
     }
 end
 
--- Guild Recruiter R1: the Members tab's Recruiting page (officer controls only for officers)
+-- Guild Recruiter R1: the Recruiting tab's Overview page (officer controls only for officers)
 function ST.RecruitParts()
     local t = GH.recruitTab or {}
     local officer = IsInGuild() and GH:IsOfficer(GH:MyName())
@@ -343,14 +343,20 @@ function ST.RecruitParts()
         { name = "rec.makeup", obj = t.rows and t.rows.WARRIOR and t.rows.WARRIOR.name },
         { name = "rec.text", obj = t.textBg },
         { name = "rec.copy", obj = t.copy },
-        { name = "rec.guildShare", obj = t.guildShare },
-        { name = "rec.channel", obj = t.channel },
-        { name = "rec.make", obj = t.make },
-        { name = "rec.makeCopy", obj = t.makeCopy },
-        { name = "rec.drag", obj = t.drag, art = { "icon" } },
+        { name = "rec.postGeneral", obj = t.post and t.post.general },
+        { name = "rec.postTrade", obj = t.post and t.post.trade },
+        { name = "rec.preview", obj = t.preview },
+        { name = "rec.channel", obj = t.channel, opt = true, shownOnly = true },
+        { name = "rec.make", obj = t.make, opt = true, shownOnly = true },
+        { name = "rec.drag", obj = t.drag, art = { "icon" }, opt = true, shownOnly = true },
         { name = "rec.status", obj = t.status },
         { name = "rec.finder", obj = t.finder, opt = true, shownOnly = true },
+        { name = "rec.totals", obj = t.totals },
     }
+    if not officer then
+        parts[#parts + 1] = { name = "rec.groupTitle", obj = t.groupTitle }
+        parts[#parts + 1] = { name = "rec.group1", obj = t.group and t.group[1], opt = true, shownOnly = true }
+    end
     if officer then
         parts[#parts + 1] = { name = "rec.share", obj = t.share }
         parts[#parts + 1] = { name = "rec.postTick", obj = t.postTick }
@@ -504,12 +510,73 @@ local function Later(frames, fn)
     C_Timer.After(0, Tick)
 end
 
-local function StepMembers()
-    CheckGroup(ST.RecruitParts(), Win())
+-- Guild Recruiter R2: the officers' lists page (officers only)
+function ST.RecruitOffParts()
+    local t = GH.recruitTab or {}
+    local pros, dni = t.pros or {}, t.dni or {}
+    return {
+        { name = "rec.side.officer", obj = t.side and t.side.buttons and t.side.buttons.officer },
+        { name = "off.prosTitle", obj = pros.title },
+        { name = "off.prosList", obj = pros.inset },
+        { name = "off.prosClear", obj = pros.clear },
+        { name = "off.prosRow1", obj = pros.rows and pros.rows[1], opt = true, shownOnly = true },
+        { name = "off.prosInvite1", obj = pros.rows and pros.rows[1] and pros.rows[1].invite, opt = true, shownOnly = true },
+        { name = "off.dniTitle", obj = dni.title },
+        { name = "off.dniList", obj = dni.inset },
+        { name = "off.dniClear", obj = dni.clear },
+        { name = "off.hint", obj = t.offHint },
+    }
+end
+
+-- Guild Recruiter R3: the "Suggestions & trials" page (officers only)
+function ST.RecruitTrialParts()
+    local t = GH.recruitTab or {}
+    local sug, trial = t.sug or {}, t.trial or {}
+    return {
+        { name = "rec.side.trials", obj = t.side and t.side.buttons and t.side.buttons.trials },
+        { name = "off.sugTitle", obj = sug.title },
+        { name = "off.sugList", obj = sug.inset },
+        { name = "off.sugClear", obj = sug.clear },
+        { name = "off.sugRow1", obj = sug.rows and sug.rows[1], opt = true, shownOnly = true },
+        { name = "off.trialTitle", obj = trial.title },
+        { name = "off.trialList", obj = trial.inset },
+        { name = "off.trialClear", obj = trial.clear },
+        { name = "off.trialRow1", obj = trial.rows and trial.rows[1], opt = true, shownOnly = true },
+        { name = "off.hint2", obj = t.off2Hint },
+    }
+end
+
+local function StepTrials()
+    CheckGroup(ST.RecruitTrialParts(), Win())
+    local t = GH.recruitTab
+    if t and t.side then t.side:Select("recruit"); GH:DrawRecruitPage() end
     Finish()
 end
 
--- full mode: the Members tab after Professions (only when the recruiter is on and we're in a guild)
+local function StepOfficer()
+    CheckGroup(ST.RecruitOffParts(), Win())
+    local t = GH.recruitTab
+    if t and t.side and t.off2Body then
+        t.side:Select("trials")
+        GH:DrawRecruitPage()
+        return Later(1, StepTrials)
+    end
+    if t and t.side then t.side:Select("recruit"); GH:DrawRecruitPage() end
+    Finish()
+end
+
+local function StepMembers()
+    CheckGroup(ST.RecruitParts(), Win())
+    local t = GH.recruitTab
+    if GH.RecruitIAmOfficer and GH.RecruitIAmOfficer() and t and t.side and t.offBody then
+        t.side:Select("officer")
+        GH:DrawRecruitPage()
+        return Later(1, StepOfficer)
+    end
+    Finish()
+end
+
+-- full mode: the Recruiting tab after Professions (only when the recruiter is on and we're in a guild)
 local function NextMembers()
     if run.mode == "full" and GH:FeatureOn("recruit") and IsInGuild() and GH.mainFrame.tabs.members then
         run.state.prevTab = run.state.prevTab or GH.mainFrame.currentTab
@@ -539,34 +606,75 @@ local function CheckCard()
     if not ok then Problem("ERR", "card", Short(err)) end
 end
 
--- 0.4.0: the Getting started card. Its rows are checked (text, state, 1-6 rows), then shown on the
--- card as a test (nothing saved, onShow not called) unless another card is on screen; the real
--- guide is checked as it is. The saved "shown" flag must not change.
-local GUIDE_STATES = { done = true, todo = true, off = true }
+-- 0.4.0 / 0.5.0: the Getting started walkthrough. Every page's rows are checked (text, state, 1-8
+-- rows, no to-do on an Optional page, a button on every Needed to-do that can be turned on, step
+-- label, Back greyed on page 1, Done on the last page), then each page is shown on the card as a test
+-- (nothing saved, onShow not called, its buttons do nothing) unless another card is on screen; the
+-- real guide is checked as it is. The height must be the same on every page; the saved "shown"
+-- flag, the page on screen and the send queue must not change (the guide sends nothing).
+local GUIDE_STATES = { done = true, todo = true, off = true, info = true, head = true }
+local function CheckGuidePage(spec, n, total)
+    local lines = spec.lines or {}
+    local where = "page" .. n
+    if #lines < 1 or #lines > 8 then Problem("GUIDE", where, #lines .. " rows") end
+    local optional = spec.stepGray == true
+    for i, l in ipairs(lines) do
+        if type(l.text) ~= "string" or l.text == "" then Problem("GUIDE", where .. ".line" .. i, "no text") end
+        if not GUIDE_STATES[l.state] then Problem("GUIDE", where .. ".line" .. i, "state " .. tostring(l.state)) end
+        if optional and l.state == "todo" then Problem("GUIDE", where .. ".line" .. i, "to-do on an Optional page") end
+        if l.state == "todo" and n > 1 and (l.key == "prof" or l.key == "pos" or l.key == "group")
+            and not (l.button and l.button.label) then
+            Problem("GUIDE", where .. ".line" .. i, "to-do without a Turn on button")
+        end
+    end
+    if GH.cannotSend then return end
+    if type(spec.step) ~= "string" or not spec.step:find(n .. "", 1, true) then Problem("GUIDE", where, "step label") end
+    local b = spec.buttons or {}
+    if n == 1 and not (b[1] and b[1].greyed) then Problem("GUIDE", where, "Back not greyed") end
+    if n == total and not (b[2] and b[2].label == ns.L.GUIDE_BTN_DONE) then Problem("GUIDE", where, "no Done") end
+end
+
 local function CheckGuide()
     if not (GH.GuideSpec and GH.CardFrame) then return Skip("guide", "(not loaded)") end
-    local before = GH.db.char.guideShown
-    local spec = GH:GuideSpec(true)
-    local lines = spec.lines or {}
-    if #lines < 1 or #lines > 6 then Problem("GUIDE", "lines", #lines .. " rows") end
-    for i, l in ipairs(lines) do
-        if type(l.text) ~= "string" or l.text == "" then Problem("GUIDE", "line" .. i, "no text") end
-        if not GUIDE_STATES[l.state] then Problem("GUIDE", "line" .. i, "state " .. tostring(l.state)) end
-    end
+    local before, pageBefore = GH.db.char.guideShown, GH.guidePage
+    local queued = #(GH.sendQueue or {})
+    local first = GH:GuideSpec(true, 1)
+    local total = first.pages or 1
+    if not GH.cannotSend and (total < 4 or total > 5) then Problem("GUIDE", "pages", total .. " pages") end
+    local specs = { first }
+    for n = 2, total do specs[n] = GH:GuideSpec(true, n) end
+    for n, spec in ipairs(specs) do CheckGuidePage(spec, n, total) end
     local f = GH.card
     if f and f:IsShown() then
         if f.spec and f.spec.key == "guide" then CheckGroup(GH:CardParts(true), nil) end
     else
         f = GH:CardFrame()
-        GH:FillCard(f, spec)
-        f:Show()
-        local ok, err = pcall(CheckGroup, GH:CardParts(true), nil)
-        f:Hide()
-        if not ok then Problem("ERR", "guide", Short(err)) end
+        local h, seen = nil, {}
+        for n, spec in ipairs(specs) do
+            GH:FillCard(f, spec)
+            f:Show()
+            -- each part once (on the first page that shows it), so one problem isn't listed 5 times
+            local parts = {}
+            for _, p in ipairs(GH:CardParts(true)) do
+                local shown = p.obj and p.obj.IsShown and p.obj:IsShown()
+                if not seen[p.name] and (shown or not p.shownOnly) then
+                    parts[#parts + 1] = p
+                    if shown then seen[p.name] = true end
+                end
+            end
+            local ok, err = pcall(CheckGroup, parts, nil)
+            local fh = f:GetHeight()
+            if h and math.abs(fh - h) > 1 then Problem("GUIDE", "page" .. n, ("height %d, page 1 %d"):format(fh, h)) end
+            h = h or fh
+            f:Hide()
+            if not ok then Problem("ERR", "guide", Short(err)) end
+        end
     end
     if GH.db.char.guideShown ~= before then Problem("GUIDE", "saved", "self-test changed guideShown") end
-    Info(("guide shown=%s off=%s todo=%d"):format(GH.db.char.guideShown and "y" or "n",
-        GH.db.profile.guideOff and "y" or "n", GH:GuideTodo(lines)))
+    if GH.guidePage ~= pageBefore then Problem("GUIDE", "page", "self-test changed the page") end
+    if #(GH.sendQueue or {}) > queued then Problem("GUIDE", "sent", "the guide queued a message") end
+    Info(("guide shown=%s off=%s todo=%d pages=%d"):format(GH.db.char.guideShown and "y" or "n",
+        GH.db.profile.guideOff and "y" or "n", GH:GuideTodo(), total))
 end
 
 local function StepMain()

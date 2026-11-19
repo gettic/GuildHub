@@ -1,9 +1,11 @@
 -- Guild Hub: Guild Recruiter, beta R1 (plans\guild-recruiter\PLAN.md, tos-strict.md, tos-plan.md).
 -- Officers set what the guild needs (roles, classes) and one recruitment text; everybody sees the
--- guild makeup and can Copy the text (/ghub recruit) or post it with the macro /ghub ad <channel>.
+-- guild makeup and can Copy the text (/ghub recruit) or post it in General / Trade with the page's
+-- Post buttons or the macro /ghub ad <channel> (both go through PostAd with every cap).
 --
 -- Rules kept here (tos, the user's words in PLAN.md):
---  * /ghub ad is the ONLY place that sends to a public channel: one post per key press, General or
+--  * PostAd (/ghub ad and the page's Post buttons) is the ONLY place that sends to a public channel:
+--    one post per key press or click (the send runs inside it), General or
 --    Trade only, never in combat / an instance / chat lockdown, never from a timer, event or message,
 --    no retry, nothing put in the chat box when the game refuses it.
 --  * Fixed caps (constants, not settings): 1 try per player per hour (all channels; failed tries
@@ -12,7 +14,8 @@
 --    web addresses, "Blizzard"/"GM"/"[Official]" or gold words; cleaned again on receive.
 --  * The Discord invite is shown only in the Copy box: never sent in chat or put in the chat box.
 --  * Ad post times (RADP) can only stop posting, never start it; kept in memory only.
---  * "Share in guild chat" and "Say welcome" fill the chat box; the player presses Enter.
+--  * "Say welcome" fills the guild chat box; the player presses Enter. ("Share in guild chat" was
+--    removed, the user's choice 2026-11-19.)
 local _, ns = ...
 local GH, L, U = ns.GH, ns.L, ns.Util
 
@@ -28,7 +31,6 @@ local AD_GUILD_GAP = 1200     -- seconds between two guild posts in the same cha
 local AD_WINDOW = 3600        -- how long post times are kept (memory only)
 local ECHO_WAIT = 3           -- seconds to wait for our own post to come back
 local ECHO_LATE = 15          -- no echo by then: still listening for a late one until here
-local GUILD_SHARE_GAP = 1800  -- "Share in guild chat": once per 30 min
 local ROLE_MAX = 9
 local JOIN_BURST = 3          -- more new names at once = a guild-list hiccup, not joins
 local POSTS_MAX = 20          -- post times kept / sent
@@ -58,7 +60,6 @@ GH.RECRUIT_KINDS, GH.RECRUIT_CHANNELS = AD_KINDS, AD_CHANNELS
 GH.RECRUIT_CAPS = {
 	NEED_DAYS = NEED_DAYS, AD_MAX = AD_MAX, DC_MAX = DC_MAX, AD_OWN_GAP = AD_OWN_GAP,
 	AD_GUILD_PER_HOUR = AD_GUILD_PER_HOUR, AD_GUILD_GAP = AD_GUILD_GAP, ECHO_WAIT = ECHO_WAIT, ECHO_LATE = ECHO_LATE,
-	GUILD_SHARE_GAP = GUILD_SHARE_GAP,
 }
 GH.RECRUIT_MACROS = { post = MACRO_POST, copy = MACRO_COPY, test = MACRO_TEST, marker = MARKER }
 
@@ -114,7 +115,7 @@ local function Caps()
 		if type(t) ~= "number" or t ~= t or t > now then c.adTries[i] = now
 		elseif t < now - AD_WINDOW then table.remove(c.adTries, i) end
 	end
-	if c.share ~= nil and (type(c.share) ~= "number" or c.share ~= c.share or c.share > now) then c.share = now end
+	c.share = nil -- the old "Share in guild chat" time (the button is gone)
 	if c.noteSeen ~= nil and type(c.noteSeen) ~= "boolean" then c.noteSeen = nil end
 	if c.testPost ~= nil and type(c.testPost) ~= "string" then c.testPost = nil end
 	return c
@@ -125,7 +126,7 @@ local function MacroSet()
 	local ch = GH.db.char
 	local m = ch.recruitMacro
 	if type(m) ~= "table" then m = {}; ch.recruitMacro = m end
-	if not AD_CHANNELS[m.channel] then m.channel = "trade" end
+	if not AD_CHANNELS[m.channel] then m.channel = "general" end -- General works in every zone, Trade only in cities
 	if type(m.icon) ~= "number" or not ICONS[m.icon] then m.icon = 3 end
 	if type(m.made) ~= "table" then m.made = {} end
 	return m
@@ -655,31 +656,12 @@ function GH:PostAd(arg)
 end
 
 ------------------------------------------------------------------------
--- Share in guild chat (fills the guild chat box; once per 30 min) and Copy
+-- Copy, the chat-box helper (Say welcome) and the post status
 ------------------------------------------------------------------------
 local function OpenChatWith(text)
 	local open = (ChatFrameUtil and ChatFrameUtil.OpenChat) or ChatFrame_OpenChat
 	if open then return pcall(open, text) end
 	return false
-end
-
--- Seconds until "Share in guild chat" can be used again (0 = now).
-function GH:GuildShareWait()
-	local c = Caps()
-	if not c.share then return 0 end
-	return math.max(0, GUILD_SHARE_GAP - (Now() - c.share))
-end
-
-function GH:ShareAdInGuild()
-	if not On() then return false end
-	local ad = self:RecruitPub().ad
-	if not ad then self:Msg(L.AD_NO_TEXT) return false end
-	local wait = self:GuildShareWait()
-	if wait > 0 then self:Msg(L.AD_SHARE_WAIT, Minutes(wait)) return false end
-	Caps().share = Now()
-	OpenChatWith("/g " .. ad)
-	self:RefreshRecruit()
-	return true
 end
 
 -- /ghub recruit: the Copy box (UI\RecruitPage.lua draws it). Works with posting switched off.
@@ -689,7 +671,35 @@ function GH:RecruitCopy()
 	if self.ShowRecruitCopyBox then self:ShowRecruitCopyBox() end
 end
 
--- The post status line for the page: own wait, the guild's last post.
+-- The short line next to the page's Post buttons: "Ready" / "Post again in N min" / "Posting is
+-- off (officers)" / "Checking..." / "Not now". "Ready" uses AdBlockReason, like the buttons;
+-- the channel-specific reasons (not joined, guild spacing) show on each button's tooltip.
+function GH:AdShortStatus()
+	local p = self:RecruitPub()
+	if not On() or not IsInGuild() then return L.AD_FEATURE_OFF, false end
+	if not p.post then return L.AD_STATUS_OFF, false end
+	if not p.ad then return L.AD_NO_TEXT, false end
+	local caps, now = Caps(), Now()
+	local last = 0
+	for _, t in ipairs(caps.adTries) do last = math.max(last, t) end
+	local wait = (last > 0 and now - last < AD_OWN_GAP) and (AD_OWN_GAP - (now - last)) or 0
+	local posts = self:RecentAdPosts()
+	if #posts >= AD_GUILD_PER_HOUR then
+		wait = math.max(wait, AD_WINDOW - (now - posts[AD_GUILD_PER_HOUR].t))
+	end
+	if wait > 0 then return L.AD_STATUS_WAIT:format(Minutes(wait)), false end
+	if InCombatLockdown() or IsInInstance() then return L.AD_STATUS_LATER, false end
+	local check = self:AdCheckWait()
+	if check > 0 then return L.AD_STATUS_CHECKING:format(math.ceil(check)), false end
+	-- "Ready" only when a button really is (same checks as the buttons: channel, guild spacing)
+	for kind in pairs(AD_CHANNELS) do
+		local why, _, _, note = self:AdBlockReason(kind)
+		if why == nil or note then return L.AD_STATUS_READY, true end
+	end
+	return L.AD_STATUS_BUTTONS, false
+end
+
+-- The longer status (tooltip): own wait, the guild's last post.
 function GH:AdStatusText()
 	local p = self:RecruitPub()
 	if not p.post then return L.AD_STATUS_OFF end
@@ -912,6 +922,7 @@ end
 
 -- Roster.lua after every guild-list rebuild: names that weren't there before = joins.
 function GH:RecruitRosterCheck(roster)
+	if self.RecruitOffRosterCheck then self:RecruitOffRosterCheck() end -- officer lists: ask / wipe
 	local known = self.recruitKnown
 	if not known then
 		known = {}
@@ -976,7 +987,7 @@ end
 local function OfficerGate(gh) return gh:IsOfficer(gh:MyName()) end
 
 local EXPECT = { NEED_DAYS = 14, AD_MAX = 200, DC_MAX = 60, AD_OWN_GAP = 3600, AD_GUILD_PER_HOUR = 2,
-	AD_GUILD_GAP = 1200, ECHO_WAIT = 3, ECHO_LATE = 15, GUILD_SHARE_GAP = 1800 }
+	AD_GUILD_GAP = 1200, ECHO_WAIT = 3, ECHO_LATE = 15 }
 local ALLOWED_BODIES = { ["/ghub ad trade"] = true, ["/ghub ad general"] = true, ["/ghub recruit"] = true,
 	["/ghub test post run"] = true }
 
@@ -1041,23 +1052,30 @@ local function SelfTest(api)
 	local st = GH.adStats
 	api.Info(("recruit ad v=%s post=%s text=%s dc=%s mac=%s slots=%s posts1h=%d heard=%d/%d lastpost=%s"):format(
 		tostring(p.v or 0), p.post and "on" or "off", p.ad and "y" or "n", p.dc and "y" or "n",
-		#found > 0 and table.concat(found, "+") or "n", used and (used .. "/" .. max) or "-",
+		#found > 0 and table.concat(found, "+") or "n", used and (used .. "/" .. max .. " used") or "-",
 		#GH:RecentAdPosts(), st.radp, st.rads, tostring(caps.testPost or "-")))
+	if GH.RecruitOffSelfTest then GH:RecruitOffSelfTest(api) end -- R2 officer lists (own info line)
+	if GH.RecruitToolsSelfTest then GH:RecruitToolsSelfTest(api) end -- R3 suggest, spotter, totals (own info line)
 end
+
+local MESSAGES = {
+	RPUB = { class = "normal", min = 10, latest = true, gate = OfficerGate },
+	RADP = { class = "normal", min = 1, latest = true },
+	RADS = { class = "normal", min = 1 },
+	RADQ = { class = "normal", min = 30, latest = true }, -- left an instance: ask for missed post times
+}
+for k, v in pairs(GH.RECRUIT_OFF_MESSAGES or {}) do MESSAGES[k] = v end -- R2 officer lists (Features\RecruitOff.lua)
 
 GH:RegisterFeature({
 	key = "recruit", name = "OPT_FEAT_RECRUIT",
-	defaults = { profile = { recruitToasts = true } },
-	messages = {
-		RPUB = { class = "normal", min = 10, latest = true, gate = OfficerGate },
-		RADP = { class = "normal", min = 1, latest = true },
-		RADS = { class = "normal", min = 1 },
-		RADQ = { class = "normal", min = 30, latest = true }, -- left an instance: ask for missed post times
-	},
+	defaults = { profile = { recruitToasts = true, recruitSpot = false } },
+	messages = MESSAGES,
 	enable = function(gh)
 		gh.recruitInInst = IsInInstance() and true or false
 		gh:On("recruit", "PLAYER_ENTERING_WORLD", OnWorld)
 		gh:On("recruit", "ZONE_CHANGED_NEW_AREA", OnWorld)
+		if gh.RecruitOffEnable then gh:RecruitOffEnable() end
+		if gh.RecruitToolsEnable then gh:RecruitToolsEnable() end
 		gh:Every("recruit", "tidy", 30, function()
 			GH:RecentAdPosts()
 			GH:RecruitWelcomeCheck()
@@ -1067,6 +1085,8 @@ GH:RegisterFeature({
 		gh:Off("adpost")
 		gh:Off("testpost")
 		gh.adPending, gh.testPosting = nil, nil
+		if gh.RecruitOffDisable then gh:RecruitOffDisable() end
+		if gh.RecruitToolsDisable then gh:RecruitToolsDisable() end
 		if gh.HideJoinToast then gh:HideJoinToast() end
 		gh:RefreshRecruit()
 	end,

@@ -246,6 +246,9 @@ W.ART.guide = {
 	done = { atlas = "common-icon-checkmark", file = "Interface\\RaidFrame\\ReadyCheck-Ready", text = "+" },
 	todo = { file = "Interface\\RaidFrame\\ReadyCheck-Waiting", text = "?" },
 	off = { file = "Interface\\RaidFrame\\ReadyCheck-Waiting", text = "-", grey = true },
+	-- 0.5.0 walkthrough: optional rows get a neutral info mark, never a to-do mark (file checked
+	-- at run time; not confirmed in a source, /ghub test ui reports it)
+	info = { file = "Interface\\FriendsFrame\\InformationIcon", text = "i" },
 }
 
 local fileKnown = {}
@@ -569,6 +572,30 @@ function W.RowHighlight(r)
 	hl:SetTexture(W.ART.rowHighlight)
 	hl:SetBlendMode("ADD")
 	return hl
+end
+
+-- The colour a chat type has in the player's chat (Blizzard's ChatTypeInfo, filled by the chat
+-- settings; Blizzard_ChatFrameBase\Shared\ChatTypeInfoConstants.lua), else a fixed fallback.
+W.CHAT_FALLBACK = { CHANNEL1 = { 1, 0.75, 0.75 }, GUILD = { 0.25, 1, 0.25 } }
+function W.ChatColor(kind)
+	local info = type(ChatTypeInfo) == "table" and ChatTypeInfo[kind]
+	if type(info) == "table" and type(info.r) == "number" and type(info.g) == "number" and type(info.b) == "number" then
+		return { info.r, info.g, info.b }
+	end
+	return W.CHAT_FALLBACK[kind] or W.COLOR.highlight
+end
+
+-- A horizontal divider w wide (the divider atlas, else a thin grey line). Caller sets the point.
+function W.Divider(parent, w)
+	local line = parent:CreateTexture(nil, "ARTWORK")
+	if W.HasAtlas(W.ART.divider) then
+		line:SetAtlas(W.ART.divider)
+		line:SetSize(w, 4)
+	else
+		line:SetColorTexture(0.6, 0.6, 0.6, 0.4)
+		line:SetSize(w, 1)
+	end
+	return line
 end
 
 -- Thin line to the right of a group header text (only if the atlas exists).

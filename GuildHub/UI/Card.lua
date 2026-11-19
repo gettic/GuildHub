@@ -7,6 +7,11 @@
 --     under the text), onShow = fn (after it is really on screen; never for test cards),
 --     skip = fn -> true (checked when its turn comes: true drops it unseen), update = fn(spec)
 --     (refreshes the spec's text right before it shows)
+--   0.5.0 (the Getting started walkthrough; old cards unchanged): width (default 400), step (small
+--     text top right, stepGray = grey), minHeight, spread (last button at the right edge), up to
+--     MAX_LINES rows; row states "head" (a small gold header, no icon) and "info" (neutral mark);
+--     row button = { label, fn, keep, greyed }; bottom buttons may have keep (fn runs, the card stays
+--     open and spec.refresh() refills it), greyed (shown disabled) and width
 -- One card at a time; others wait (max 3, the same key replaces). Never opens in combat or in an
 -- instance: it waits for both to end. Always says "Guild Hub" at the top (tos: never mistaken for a
 -- Blizzard dialog). Plain display frames only (no secure templates).
@@ -18,8 +23,10 @@ local CARD_W = 400
 local PAD = 16
 local MAX_WAITING = 3
 local BUTTON_H = 24
-local MAX_LINES = 6
+local MAX_LINES = 8
 local ICON = 16
+local ROW_BUTTON_W = 96
+local ROW_BUTTON_H = 20
 
 GH.cardQueue = {}
 
@@ -27,6 +34,28 @@ local function TextHeight(fs, fallbackLines)
 	local ok, h = pcall(fs.GetStringHeight, fs)
 	if ok and type(h) == "number" and h > 0 then return h end
 	return 14 * (fallbackLines or 1)
+end
+
+-- A click on a card button: keep = the fn runs and the card stays open (refilled by spec.refresh);
+-- else the answer first, then hide (the next waiting card, shown from OnHide, sees it).
+local function Press(f, e)
+	if not e or e.greyed then return end
+	local spec = f.spec
+	local ok, err = true, nil
+	if e.keep then
+		if type(e.fn) == "function" then ok, err = pcall(e.fn) end
+		if f:IsShown() and f.spec == spec and spec and type(spec.refresh) == "function" then spec.refresh() end
+	else
+		f.answered = true
+		if type(e.fn) == "function" then ok, err = pcall(e.fn) end
+		f:Hide()
+	end
+	if not ok then geterrorhandler()(err) end
+end
+
+local function SetGrey(b, grey)
+	if b.SetEnabled then b:SetEnabled(not grey) end
+	if b.SetGreyed then b:SetGreyed(grey and true or false) end
 end
 
 -- Built once; also used by the self-test with test text.
@@ -68,9 +97,19 @@ function GH:CardFrame()
 		r.sub:SetPoint("TOPLEFT", r.text, "BOTTOMLEFT", 0, -2)
 		r.sub:SetWidth(CARD_W - 2 * PAD - ICON - 6)
 		r.sub:SetWordWrap(true)
+		r.head = W.Text(r, "GameFontNormalSmall") -- state "head": a small gold header
+		r.head:SetPoint("TOPLEFT", 0, -2)
+		r.head:Hide()
+		r.button = W.Button(r, "", ROW_BUTTON_W, ROW_BUTTON_H, "GameFontNormalSmall")
+		r.button:SetPoint("TOPRIGHT", r, "TOPRIGHT", 0, 1)
+		r.button:SetScript("OnClick", function() Press(f, r.entry and r.entry.button) end)
+		r.button:Hide()
 		r:Hide()
 		f.lines[i] = r
 	end
+	f.step = W.Text(f, "GameFontDisableSmall", nil, "RIGHT")
+	f.step:SetPoint("TOPRIGHT", -30, -12)
+	f.step:Hide()
 	f.note = W.Text(f, "GameFontDisableSmall")
 	f.note:SetPoint("TOPLEFT", f.body, "BOTTOMLEFT", 0, -10)
 	f.note:SetWidth(CARD_W - 2 * PAD)
@@ -82,13 +121,7 @@ function GH:CardFrame()
 		local b = W.Button(f, "", 170, BUTTON_H, "GameFontNormal")
 		b:SetScript("OnClick", function()
 			local spec = f.spec
-			f.answered = true
-			-- the answer first, then hide: the next waiting card (shown from OnHide) sees it
-			local e = spec and spec.buttons and spec.buttons[i]
-			local ok, err = true, nil
-			if e and type(e.fn) == "function" then ok, err = pcall(e.fn) end
-			f:Hide()
-			if not ok then geterrorhandler()(err) end
+			Press(f, spec and spec.buttons and spec.buttons[i])
 		end)
 		f.buttons[i] = b
 	end
@@ -111,10 +144,20 @@ end
 function GH:FillCard(f, spec)
 	f.spec = spec
 	f.answered = nil
+	local cw = tonumber(spec.width) or CARD_W
+	local inner = cw - 2 * PAD
+	f:SetWidth(cw)
+	f.title:SetWidth(inner - 20)
+	f.body:SetWidth(inner)
+	f.note:SetWidth(inner)
 	f.title:SetText(spec.title or "")
 	f.body:SetText(spec.text or "")
 	f.note:SetText(spec.note or "")
 	f.note:SetShown(spec.note ~= nil)
+	f.step:SetText(spec.step or "")
+	f.step:SetShown(spec.step ~= nil)
+	local sc = spec.stepGray and W.COLOR.gray or W.COLOR.normal
+	f.step:SetTextColor(sc[1], sc[2], sc[3])
 	-- checklist rows under the body; the note goes under the last one
 	local rows = type(spec.lines) == "table" and spec.lines or {}
 	local nLines = math.min(#rows, MAX_LINES)
@@ -122,18 +165,44 @@ function GH:FillCard(f, spec)
 	for i, r in ipairs(f.lines) do
 		local e = rows[i]
 		r:SetShown(i <= nLines)
+		r.entry = i <= nLines and e or nil
+		if i > nLines then r.button:Hide() end
 		if i <= nLines then
-			W.SetGuideIcon(r.icon, r.mark, e.state)
-			r.text:SetText(e.text or "")
-			r.sub:SetText(e.sub or "")
-			r.sub:SetShown(e.sub ~= nil and e.sub ~= "")
-			local c = e.state == "off" and W.COLOR.gray or W.COLOR.normal
-			r.text:SetTextColor(c[1], c[2], c[3])
-			local rh = math.max(ICON, 1 + TextHeight(r.text) + (r.sub:IsShown() and 2 + TextHeight(r.sub) or 0))
+			r:SetWidth(inner)
+			local head = e.state == "head"
+			local btn = not head and type(e.button) == "table" and e.button or nil
+			local textW = inner - ICON - 6 - (btn and ROW_BUTTON_W + 6 or 0)
+			r.text:SetWidth(textW)
+			r.sub:SetWidth(textW)
+			r.head:SetWidth(inner)
+			r.head:SetShown(head)
+			r.text:SetShown(not head)
+			if head then
+				r.head:SetText(e.text or "")
+				r.icon:Hide()
+				r.mark:Hide()
+				r.sub:Hide()
+			else
+				W.SetGuideIcon(r.icon, r.mark, e.state)
+				r.text:SetText(e.text or "")
+				r.sub:SetText(e.sub or "")
+				r.sub:SetShown(e.sub ~= nil and e.sub ~= "")
+				local c = e.state == "off" and W.COLOR.gray or W.COLOR.normal
+				r.text:SetTextColor(c[1], c[2], c[3])
+			end
+			r.button:SetShown(btn ~= nil)
+			if btn then
+				r.button:SetLabel(btn.label or "")
+				SetGrey(r.button, btn.greyed)
+			end
+			local rh
+			if head then rh = 2 + TextHeight(r.head)
+			else rh = math.max(ICON, btn and ROW_BUTTON_H or 0, 1 + TextHeight(r.text) + (r.sub:IsShown() and 2 + TextHeight(r.sub) or 0)) end
 			r:SetHeight(math.floor(rh + 0.5))
 			r:ClearAllPoints()
-			r:SetPoint("TOPLEFT", above, "BOTTOMLEFT", 0, i == 1 and -10 or -6)
-			linesH = linesH + rh + (i == 1 and 10 or 6)
+			local gap = i == 1 and 10 or (head and 10 or 6)
+			r:SetPoint("TOPLEFT", above, "BOTTOMLEFT", 0, -gap)
+			linesH = linesH + rh + gap
 			above = r
 		end
 	end
@@ -142,16 +211,19 @@ function GH:FillCard(f, spec)
 	local list = spec.buttons or {}
 	local n = math.min(#list, 3)
 	local gap = 8
-	local bw = n > 0 and math.min(170, math.floor((CARD_W - 2 * PAD - (n - 1) * gap) / n)) or 0
+	local bw = n > 0 and math.min(170, math.floor((inner - (n - 1) * gap) / n)) or 0
 	for i, b in ipairs(f.buttons) do
 		local e = list[i]
 		b:SetShown(i <= n)
 		if i <= n then
-			b:SetWidth(bw)
-			if b.label and b.label.SetWidth then b.label:SetWidth(bw - 8) end
+			local w = tonumber(e.width) or bw
+			b:SetWidth(w)
+			if b.label and b.label.SetWidth then b.label:SetWidth(w - 8) end
 			b:SetLabel(e.label or "")
+			SetGrey(b, e.greyed)
 			b:ClearAllPoints()
 			if i == 1 then b:SetPoint("BOTTOMLEFT", PAD, PAD)
+			elseif spec.spread and i == n then b:SetPoint("BOTTOMRIGHT", -PAD, PAD)
 			else b:SetPoint("LEFT", f.buttons[i - 1], "RIGHT", gap, 0) end
 		end
 	end
@@ -174,7 +246,9 @@ function GH:FillCard(f, spec)
 	if spec.note then h = h + 10 + TextHeight(f.note, 1) end
 	if spec.tick then h = h + 30 end
 	h = h + 14 + BUTTON_H + PAD
+	h = math.max(h, tonumber(spec.minHeight) or 0)
 	f:SetHeight(math.floor(h + 0.5))
+	return h
 end
 
 local function CanShow()
@@ -233,6 +307,8 @@ function GH:CardParts(withLines)
 	end
 	for i, r in ipairs(withLines and f.lines or {}) do -- checklist rows (the Getting started card)
 		parts[#parts + 1] = { name = "card.line" .. i, obj = r, opt = true, shownOnly = true }
+		parts[#parts + 1] = { name = "card.line" .. i .. ".button", obj = r.button, opt = true, shownOnly = true }
 	end
+	if withLines then parts[#parts + 1] = { name = "card.step", obj = f.step, opt = true, shownOnly = true } end
 	return parts
 end

@@ -376,10 +376,10 @@ local function OnActionBlocked(_, addon, func)
 	if addon ~= "GuildHub" then return end
 	if type(func) == "string" and func:find("InviteUnit", 1, true) then return end
 	local a = GH.actionBlocked
-	-- the recruiter's ad post / /ghub test post: a refused chat post is expected (no key press, or
+	-- the recruiter's ad post / /ghub test post / guild invite (it falls back to the chat box): a refusal is expected (no key press, or
 	-- the timer control) and gets its own result line, so it is not a taint problem. Blizzard's own
 	-- message is never hidden (tos condition 3).
-	if GH.testPosting or GH.adPending or (GH.chatPostBlockedAt and GetTime() - GH.chatPostBlockedAt < 1) then
+	if GH.testPosting or GH.adPending or GH.guildInvitePending or (GH.chatPostBlockedAt and GetTime() - GH.chatPostBlockedAt < 1) then
 		a.chat = (a.chat or 0) + 1
 		return
 	end

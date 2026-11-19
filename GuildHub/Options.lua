@@ -86,6 +86,18 @@ local function AddFeatureOptions(args)
 		disabled = function() return not GH:FeatureOn("recruit") end,
 		hidden = function() return not GH.features.recruit end,
 	}
+	-- Guild Recruiter R3: the "looking for guild" spotter (off by default, each player's own choice)
+	args.recruitSpot = {
+		type = "toggle", order = 19.86, width = "full",
+		name = L.OPT_RECRUIT_SPOT, desc = L.OPT_RECRUIT_SPOT_DESC,
+		get = function() return GH.db.profile.recruitSpot == true end,
+		set = function(_, v)
+			GH.db.profile.recruitSpot = v and true or false
+			if GH.SpotterUpdate then GH:SpotterUpdate() end
+		end,
+		disabled = function() return not GH:FeatureOn("recruit") end,
+		hidden = function() return not GH.features.recruit end,
+	}
 end
 
 -- Features.lua calls this (through OnFeaturesChanged) so open settings show the new state.

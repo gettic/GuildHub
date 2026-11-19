@@ -4,19 +4,23 @@ A guild hub for WoW Forever that lets guildmates see what everyone is doing, whe
 
 ## Getting started
 
-After you install Guild Hub, a small "Getting started" card shows a short checklist once on each character, if something on it is still to do. It comes right after the map question, or at your next login if you answered that with "Not now". It never shows in combat or in a dungeon, and it ticks itself off as you go. Tick "Don't show this by itself again" to stop it on all your characters. Open it again any time with `/ghub start` or the "Getting started" button in Settings.
+After you install Guild Hub, a short "Getting started" walkthrough opens once on each character, but only while something needed is still to do. It comes right after the map question, or at your next login if you answered that with "Not now". It never shows in combat or in a dungeon. Use Back and Next to move between its pages. Tick "Don't show this by itself again" to stop it on all your characters. Open it again any time with `/ghub start` or the "Getting started" button in Settings.
 
-**1. Choose what you share.** You only see from others what you share yourself (see [Fair trade](#fair-trade)). Change it any time in Settings > What I share.
+| Page | What it shows |
+|---|---|
+| 1. Start | What is needed so Guild Hub works for you, and the optional extras |
+| 2. Share your professions (needed) | A Turn on button, then one row per profession |
+| 3. Map position and group size (needed) | A Turn on button for each |
+| 4. The status board (optional) | What the board does, and an Open board button |
+| 5. Recruiting (optional) | What the Recruiting tab does, and an Open tab button |
 
-- **My position:** you see guildmates' dots on your world map and minimap (see [Guild map](#guild-map)).
-- **My group size:** you see how many players are in guildmates' groups. Only the number, never names. On by default.
-- **My professions:** you can use the Professions tab, the recipe search and the "crafted by" line in tooltips. On by default.
+Each mark comes from your real settings, so it ticks itself off as you go. "Turn on" changes only that one setting. The walkthrough itself sends nothing.
 
-**2. Open each of your profession windows once.** Guild Hub can only read your recipes while the window is open. Do it once per profession (Cooking and First Aid too). After that, new recipes are added by themselves. Herbalism, Skinning and Fishing have no recipe window, so they need nothing.
+**Professions.** Each profession row says "Read: N recipes", or that you still need to open its window once from your spellbook. Guild Hub can only read your recipes while the window is open (Cooking and First Aid too). After that, new recipes are added by themselves. Herbalism, Skinning and Fishing have nothing to open.
 
-**3. Set a status.** Type `/ghub` or click the minimap button, then pick one on the Status tab (LFG, Need help, Farming...). Your guild sees it. It clears itself after 1 hour.
+**Map position and group size.** You only see from others what you share yourself (see [Fair trade](#fair-trade)). Your position is sent only out in the world and never saved. Your group size is only a number, never names. Turn either off any time in Settings > What I share.
 
-On Trial and Veteran accounts the card only says that sharing is locked and that the status board works.
+The Recruiting page only shows when the Guild Recruiter is on. On Trial and Veteran accounts the walkthrough is one page: sharing is locked, and the status board works.
 
 ## What it does now
 
@@ -28,8 +32,8 @@ On Trial and Veteran accounts the card only says that sharing is locked and that
 - A Professions tab: who has which profession, and who can make an item.
 - A "crafted by" line in item tooltips.
 - Guild map dots: guildmates who share their position show on the world map and the minimap.
-- A Getting started card with a short checklist.
-- A Guild Recruiter (beta): what the guild needs, the guild makeup and a recruitment text to copy or post.
+- A short Getting started walkthrough.
+- A Guild Recruiter (beta): a Recruiting tab with what the guild needs, the guild makeup, the guild's ad to post or copy, and lists for officers.
 
 Planned next: a Map tab in the window. It is not built yet.
 
@@ -75,20 +79,20 @@ The Guild map section in Settings has a switch for the minimap dots. `/ghub test
 
 ## Guild Recruiter
 
-This part is in beta. Open the Members tab in the `/ghub` window, then the Recruiting page. Everyone sees:
+This part is in beta. Open the Recruiting tab in the `/ghub` window. The list on the left has Overview for everyone. Officers also see Officer lists and Suggestions & trials.
+
+**Overview.** Everyone sees:
 
 - **We need:** how many tanks, healers and damage the guild wants, and which classes are wanted or closed.
 - **Guild makeup:** per class, how many members are level 60 and level 50+ (from the guild list).
-- **Recruitment text:** the guild's short ad, written by the officers.
+- **The guild's ad:** a short recruitment text, written by the officers.
+- **Guild totals:** how many joined in the last 30 days, how many of them are still here, and the average number online. This needs "Keep guild history on this computer" (see [Settings](#settings)). Officers also see who left and came back.
 
-**What officers set.** Officers set the needs (they last 14 days), the recruitment text and a Discord invite, then press "Share with guild". The text has at most 200 letters (accented letters count as one letter each), and it must fit in one chat line. Links, web addresses and words like Blizzard, GM, Official, gold or boost are not allowed. The Discord invite (discord.gg/... or discord.com/invite/...) only shows in the Copy box. Officers also tick "Let members post the ad".
+**What officers set.** Officers set the needs (they last 14 days), the ad and a Discord invite, then press "Save for the guild". "Unsaved changes" shows until they do. The ad has at most 200 letters (accented letters count as one letter each), and it must fit in one chat line. Links, web addresses and words like Blizzard, GM, Official, gold or boost are not allowed. The Discord invite (discord.gg/... or discord.com/invite/...) only shows in the Copy box. Officers also tick "Members may post in General/Trade".
 
-**Copy and share.** Copy (or `/ghub recruit`) opens the text to copy, for Discord or forums. "Share in guild chat" puts the text in your guild chat box once every 30 minutes; you press Enter. "Guild Finder" opens the game's own Guild Finder.
+**Posting the ad.** Under "Where the ad goes", "Post in General" and "Post in Trade" post the ad as you: one line per click. A line under them says "Ready", "Post again in N min" or "Posting is off (officers)". A preview shows how the ad reads in chat. Posting has firm limits:
 
-**Posting the ad.** "Make macro" makes a character macro, "GH Recruit", that runs `/ghub ad trade` or `/ghub ad general`. Drag it to your bar and press it to post the text as you. "Make Copy macro" makes "GH Ad Copy" for `/ghub recruit`. Posting has firm limits:
-
-- off until an officer ticks "Let members post the ad"
-- General and Trade only
+- off until an officer turns it on
 - 1 post per player per hour (a failed try counts too)
 - 2 posts per hour for the whole guild
 - 20 minutes between posts in the same channel (for General: in the same zone)
@@ -96,7 +100,27 @@ This part is in beta. Open the Members tab in the `/ghub` window, then the Recru
 
 The first press only shows a short note: "Posts as you. Follow channel rules; spamming can be reported." The next press posts.
 
-For about 20 seconds after login (or after leaving a dungeon) the ad says "checking the guild's recent posts" while it learns when the guild last posted. Try again after that. If the game is slow to show your post, you see "couldn't confirm the post". It still counts for the hourly limits.
+For about 20 seconds after login (or after leaving a dungeon) you see "checking when guildmates last posted" while Guild Hub learns when the guild last posted. Try again after that. If the game is slow to show your post, you see "couldn't see your post in the channel yet". It still counts for the limits.
+
+**Post button (optional).** "Make post button" makes a character macro, "GH Recruit", that runs `/ghub ad general` or `/ghub ad trade` (General by default). Drag it to your bar and press it to post. It has the same limits. It is hidden while posting is off.
+
+**Discord and forums.** Copy (or `/ghub recruit`) shows the ad and the Discord invite to copy. "Guild Finder" opens the game's own Guild Finder.
+
+**Suggest to officers.** Right-click a player outside the guild and pick "Suggest to officers". You can also pick up to 4 players from your own group under "Suggest from your group" on the Overview page. Only the name and a class/role tag go to one online officer with Guild Hub. You can suggest 3 players a day, and the same player once a week. Not in combat or instances.
+
+**Officer lists** (officers only). Prospects (status new, contacted, trial, no or joined) and Don't invite. Right-click a player outside the guild: the "Guild Hub" group in the menu has Invite to guild, Add to prospects and Don't invite. The lists hold only a name, a status, the date and which officer set it. They are:
+
+- shared in officer chat only, and synced between officers at login
+- deleted after 30 days
+- removed from a computer whose player is no longer an officer
+
+"Clear list" needs a second click while it counts down.
+
+**Invite to guild** (officers only). One click sends one invite. At most 10 per hour, once per player per 7 days, and never someone on Don't invite. If the game blocks it, `/ginvite Name` is put in your chat box; press Enter to send it.
+
+**Suggestions & trials** (officers only). Members' suggestions can be moved to Prospects or removed. To start a trial, right-click a member and pick Start trial (7, 14 or 30 days). The list shows when each trial ends; "+7 d" adds a week (at most 30 days from today). Once per login you get one chat line when a trial has ended or ends within a day. Trials are a reminder only: Guild Hub never promotes or removes anyone.
+
+**Marking players who want a guild.** The setting "Mark chat lines from players looking for a guild" is off by default. When on, it puts a small [wants a guild] tag in front of channel lines (General, Trade...) that ask for a guild. It saves and sends nothing.
 
 **New members.** When someone joins, a small note shows "Name joined the guild", with who invited them if the game's log says. "Say welcome" puts a welcome line in your guild chat box; you press Enter. Turn the note off in Settings ("Show a note when someone joins the guild"). A new member with Guild Hub gets a welcome card once, within two days of joining (this needs "Keep guild history on this computer").
 
@@ -124,10 +148,10 @@ Copy the `GuildHub` folder into your WoW `AddOns` folder, then restart the game 
 | `/ghub help` | Show the list of commands |
 | `/ghub status` | Show who has Guild Hub and which version (beta testers too), the guild history counts, and how many addon messages you sent in the last 10 minutes |
 | `/ghub options` | Open Settings |
-| `/ghub start` | Open the Getting started card |
+| `/ghub start` | Open the Getting started walkthrough |
 | `/ghub recruit` | Show the guild's recruitment text to copy |
-| `/ghub ad trade` / `/ghub ad general` | Post the recruitment text (for the ad macro; see [Guild Recruiter](#guild-recruiter)) |
-| `/ghub selftest` | Check the window and saved data; shows one line to copy and send to the author (no names in it). `/ghub selftest full` also checks the Professions and Members tabs |
+| `/ghub ad trade` / `/ghub ad general` | Post the recruitment text (for the post button; see [Guild Recruiter](#guild-recruiter)) |
+| `/ghub selftest` | Check the window and saved data; shows one line to copy and send to the author (no names in it). `/ghub selftest full` also checks the Professions and Recruiting tabs |
 | `/ghub debug` | Show addon messages |
 | `/ghub test big` | Run a test of splitting a long message |
 | `/ghub test activity` | Show what Guild Hub thinks you are doing |
@@ -140,7 +164,7 @@ Copy the `GuildHub` folder into your WoW `AddOns` folder, then restart the game 
 
 ## Settings
 
-Click the gear button in the title bar of the `/ghub` window (left of the "-"), or use `/ghub options` or the minimap button's right-click. Click the gear again to go back to Status. The same settings are in Esc > Options > AddOns > Guild Hub. There you can switch off automatic activity, the "crafted by" tooltip line and the notes, unmute players, show or hide guildmates without Guild Hub, hide the minimap button, and turn the guild dots on the minimap on or off. The "Getting started" button opens the Getting started card. The Guild Master sets which ranks count as officers.
+Click the gear button in the title bar of the `/ghub` window (left of the "-"), or use `/ghub options` or the minimap button's right-click. Click the gear again to go back to Status. The same settings are in Esc > Options > AddOns > Guild Hub. There you can switch off automatic activity, the "crafted by" tooltip line and the notes, unmute players, show or hide guildmates without Guild Hub, hide the minimap button, and turn the guild dots on the minimap on or off. The "Getting started" button opens the Getting started walkthrough. The Guild Master sets which ranks count as officers.
 
 **What I share.** This is at the top of Settings. It has one line each for your position, your professions and your group size. Each line says "off = you also can't see others'" (see Fair trade). Trial and Veteran accounts can't share, so these lines are locked for them.
 
@@ -188,15 +212,18 @@ The addon lives in `GuildHub\`. Files are loaded in this order (see `GuildHub_Fo
 | `Professions.lua` | Professions: reading recipes, sharing them, search, tooltip line |
 | `Features\Recorders.lua` | Guild history kept on this computer |
 | `Features\Map.lua` | Guild map: sharing and receiving positions |
-| `Features\Recruit.lua` | Guild Recruiter: needs, text, ad posting and limits, macros, join notes |
+| `Features\RecruitOff.lua` | Guild Recruiter: officer lists, the name menu, Invite to guild, trials |
+| `Features\RecruitTools.lua` | Guild Recruiter: Suggest to officers, marking chat lines, guild totals |
+| `Features\Recruit.lua` | Guild Recruiter: needs, ad, posting and limits, post button, join notes |
 | `UI\Widgets.lua` | Buttons, text boxes and the alert note |
 | `UI\MainFrame.lua` | The window, its tabs, the gear button and the minimap button |
 | `UI\StatusTab.lua` | The status board tab |
 | `UI\ProfessionsTab.lua` | The Professions tab |
 | `UI\MiniFrame.lua` | The small mini mode window |
 | `UI\Card.lua` | The small card ("Share my position", Getting started) |
-| `UI\Guide.lua` | The Getting started checklist |
-| `UI\RecruitPage.lua` | The Members tab's Recruiting page, the Copy box and the join note |
+| `UI\Guide.lua` | The Getting started walkthrough |
+| `UI\RecruitPage.lua` | The Recruiting tab's Overview page, the Copy box and the join note |
+| `UI\RecruitOffPage.lua` | The Recruiting tab's officer pages |
 | `UI\MapPins.lua` | Dots on the world map and minimap |
 | `Options.lua` | Settings (the Settings page in the window and the Options page) |
 | `ApiTest.lua` | The `/ghub test api` check |

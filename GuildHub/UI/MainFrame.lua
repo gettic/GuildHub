@@ -18,7 +18,7 @@ local PAGES = {
 local TABS = {
 	{ key = "status", label = "TAB_STATUS" },
 	{ key = "professions", label = "TAB_PROF" },
-	{ key = "members", label = "TAB_MEMBERS" }, -- Guild Recruiter R1: the Members tab (side list: Recruiting)
+	{ key = "members", label = "TAB_MEMBERS" }, -- Guild Recruiter: the Recruiting tab (label TAB_MEMBERS; side list Overview / officer pages)
 }
 
 function GH:SaveWindowPos()
@@ -304,7 +304,8 @@ function GH:TestUI()
 	end
 	self:Msg(L.TEST_UI2, yes(MenuUtil and type(MenuUtil.CreateContextMenu) == "function"),
 		yes(W.HasTemplate("WowStyle1FilterDropdownTemplate")), atlas("Dungeon"), atlas("Raid"), atlas("common-icon-checkmark"),
-		file("Interface\\Minimap\\PartyRaidBlips"), file("Interface\\Common\\ReputationStar"))
+		file("Interface\\Minimap\\PartyRaidBlips"), file("Interface\\Common\\ReputationStar"),
+		file("Interface\\FriendsFrame\\InformationIcon"))
 end
 
 -- /ghub, minimap left-click: always the full window (open/close). If the mini window is showing,

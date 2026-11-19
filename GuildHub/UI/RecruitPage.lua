@@ -1,8 +1,10 @@
--- Guild Hub: the Members tab (side list; only "Recruiting" for now) and the Recruiting page,
+-- Guild Hub: the Recruiting tab (internal key "members"; side list Overview / Officer lists /
+-- Suggestions & trials) and its Overview page,
 -- the Copy box (/ghub recruit) and the join note. Logic: Features\Recruit.lua.
 -- Everybody reads the page; only officers see working edit controls (others see them greyed with
--- the reason). Nothing here sends to chat: Copy only shows text, "Share in guild chat" and
--- "Say welcome" fill the chat box, the post itself is the macro (/ghub ad).
+-- the reason). Copy only shows text, "Say welcome" fills the guild chat box; the only thing that
+-- sends is the Post in General / Trade click (and the bar button /ghub ad), both through GH:PostAd
+-- with every cap (one line per click, nothing from a timer or an event).
 local _, ns = ...
 local GH, L, U = ns.GH, ns.L, ns.Util
 local W = ns.Widgets
@@ -232,13 +234,14 @@ local function BuildText(t, area)
 		if user then
 			if not IsOfficerMe() then s:SetText(GH:RecruitPub().dc or "") return end
 			t.dirty = true
+			if t.unsaved then t.unsaved:Show() end
 		end
 	end)
 	t.dcShow = W.Text(area, "GameFontHighlightSmall", "")
 	t.dcShow:SetPoint("LEFT", t.dcLabel, "RIGHT", 10, 0)
 	t.dcShow:SetWidth(300)
 
-	t.postTick = W.CheckButton(area, L.REC_POST_TICK, 170)
+	t.postTick = W.CheckButton(area, L.REC_POST_TICK, 200)
 	t.postTick:SetPoint("TOPLEFT", RIGHT_X - 4, -146)
 	t.postTick:SetScript("OnClick", function()
 		if not IsOfficerMe() then GH:DrawRecruitPage() return end
@@ -247,7 +250,7 @@ local function BuildText(t, area)
 		GH:DrawRecruitPage()
 	end)
 	Tip(t.postTick, L.REC_POST_TIP)
-	t.revert = W.Button(area, L.REC_REVERT, 80, 22)
+	t.revert = W.Button(area, L.REC_REVERT, 64, 22)
 	t.revert:SetPoint("TOPRIGHT", area, "TOPLEFT", RIGHT_X + TEXT_W - 132, -148)
 	t.revert:SetScript("OnClick", function() ResetDraft(t); GH:DrawRecruitPage() end)
 	t.share = W.Button(area, L.REC_SHARE, 128, 22)
@@ -267,28 +270,57 @@ local function BuildText(t, area)
 	Tip(t.share, L.REC_SHARE_TIP)
 end
 
+-- "Where the ad goes" (the user's rework, 2026-11-19): General / Trade first (Post buttons, the
+-- preview, the optional post button for the bar), then Discord / forums (Copy, Guild Finder).
+-- Place labels in the colour of that chat (W.ChatColor). Nothing goes to guild chat.
 local function BuildButtons(t, area)
-	t.copy = W.Button(area, L.REC_COPY, 90, 22)
-	t.copy:SetPoint("TOPLEFT", RIGHT_X, -184)
-	t.copy:SetScript("OnClick", function() GH:RecruitCopy() end)
-	Tip(t.copy, L.REC_COPY_TIP)
-	t.guildShare = W.Button(area, L.REC_GUILD_SHARE, 150, 22)
-	t.guildShare:SetPoint("LEFT", t.copy, "RIGHT", 6, 0)
-	t.guildShare:SetScript("OnClick", function() GH:ShareAdInGuild() end)
-	Tip(t.guildShare, L.REC_GUILD_SHARE_TIP)
-	t.finder = W.Button(area, L.REC_FINDER, 140, 22)
-	t.finder:SetPoint("LEFT", t.guildShare, "RIGHT", 6, 0)
-	t.finder:SetScript("OnClick", function()
-		if InCombatLockdown() or type(ToggleGuildFinder) ~= "function" then return end
-		pcall(ToggleGuildFinder)
+	t.whereTitle = Header(area, L.REC_WHERE_TITLE, RIGHT_X, -180)
+	t.whereLine = W.Divider(area, 200)
+	t.whereLine:SetPoint("LEFT", t.whereTitle, "RIGHT", 8, 0)
+	t.unsaved = W.Text(area, "GameFontNormalSmall", L.REC_UNSAVED, "RIGHT")
+	t.unsaved:SetPoint("TOPRIGHT", area, "TOPLEFT", RIGHT_X + TEXT_W, -170)
+	t.unsaved:SetWidth(150)
+	-- General / Trade
+	t.whereChannel = W.Text(area, "GameFontNormalSmall", L.REC_WHERE_CHANNEL)
+	t.whereChannel:SetPoint("TOPLEFT", RIGHT_X, -200)
+	t.whereChannel:SetWidth(TEXT_W)
+	t.preview = W.Text(area, "GameFontHighlightSmall", "")
+	t.preview:SetPoint("TOPLEFT", RIGHT_X + 8, -216)
+	t.preview:SetWidth(TEXT_W - 8)
+	t.preview:SetWordWrap(true)
+	t.preview:SetHeight(30)
+	t.preview:SetJustifyV("TOP")
+	t.post = {}
+	for i, kind in ipairs({ "general", "trade" }) do
+		local b = W.Button(area, kind == "general" and L.REC_POST_GENERAL or L.REC_POST_TRADE, 124, 22)
+		b:SetPoint("TOPLEFT", RIGHT_X + (i - 1) * 128, -250)
+		-- the send runs inside this click (one click = at most one line; PostAd checks every cap)
+		b:SetScript("OnClick", function() GH:PostAd(kind); GH:DrawRecruitPage() end)
+		Tip(b, L.REC_POST_BTN_TIP:format(GH.RECRUIT_CHANNELS[kind]))
+		t.post[kind] = b
+	end
+	t.postState = W.Text(area, "GameFontHighlightSmall", "")
+	t.postState:SetPoint("LEFT", t.post.trade, "RIGHT", 8, 0)
+	t.postState:SetWidth(TEXT_W - 264)
+	t.postState:SetWordWrap(true)
+	t.postStateHover = CreateFrame("Frame", nil, area)
+	t.postStateHover:SetAllPoints(t.postState)
+	t.postStateHover:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+		GameTooltip:AddLine(GH:AdStatusText(), 1, 1, 1, true)
+		GameTooltip:Show()
 	end)
-	Tip(t.finder, L.REC_FINDER_TIP)
+	t.postStateHover:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	t.postOff = W.Text(area, "GameFontDisableSmall", L.REC_POST_OFF_LINE)
+	t.postOff:SetPoint("TOPLEFT", RIGHT_X, -282)
+	t.postOff:SetWidth(TEXT_W)
 
-	-- the macro
-	t.macroTitle = Header(area, L.MAC_TITLE, RIGHT_X, -222)
+	-- the optional post button for the bar (hidden while posting is off)
+	t.macroTitle = W.Text(area, "GameFontNormalSmall", L.MAC_TITLE)
+	t.macroTitle:SetPoint("TOPLEFT", RIGHT_X, -282)
 	local drag = CreateFrame("Button", nil, area)
-	drag:SetSize(36, 36)
-	drag:SetPoint("TOPLEFT", RIGHT_X, -246)
+	drag:SetSize(30, 30)
+	drag:SetPoint("TOPLEFT", RIGHT_X + 2, -300)
 	drag.icon = drag:CreateTexture(nil, "ARTWORK")
 	drag.icon:SetAllPoints()
 	drag.frame = drag:CreateTexture(nil, "OVERLAY")
@@ -320,15 +352,26 @@ local function BuildButtons(t, area)
 			SetChannel(cur == "trade" and "general" or "trade")
 		end)
 	end
-	dd:SetPoint("TOPLEFT", RIGHT_X + 48, -250)
+	dd:SetPoint("TOPLEFT", RIGHT_X + 42, -304)
 	t.channel = dd
 	Tip(dd, L.MAC_CHANNEL_TIP)
+	t.make = W.Button(area, L.MAC_MAKE, 140, 22)
+	t.make:SetPoint("TOPLEFT", RIGHT_X + 180, -304)
+	t.make:SetScript("OnClick", function()
+		local _, msg = GH:MakeRecruitMacro("post")
+		GH:Msg(msg)
+	end)
+	Tip(t.make, L.MAC_MAKE_TIP)
+	t.slots = W.Text(area, "GameFontHighlightSmall", "")
+	t.slots:SetPoint("LEFT", t.make, "RIGHT", 6, 0)
+	t.slots:SetWidth(TEXT_W - 326)
+	t.slots:SetWordWrap(true)
 
 	t.icons = {}
 	for i, name in ipairs(GH.RECRUIT_ICONS) do
 		local b = CreateFrame("Button", nil, area)
-		b:SetSize(24, 24)
-		b:SetPoint("TOPLEFT", RIGHT_X + 190 + (i - 1) * 28, -250)
+		b:SetSize(22, 22)
+		b:SetPoint("TOPLEFT", RIGHT_X + (i - 1) * 26, -338)
 		b.icon = b:CreateTexture(nil, "ARTWORK")
 		b.icon:SetAllPoints()
 		b.icon:SetTexture(W.IconPath(name))
@@ -346,45 +389,80 @@ local function BuildButtons(t, area)
 		end)
 		t.icons[i] = b
 	end
-
-	t.make = W.Button(area, L.MAC_MAKE, 130, 22)
-	t.make:SetPoint("TOPLEFT", RIGHT_X, -292)
-	t.make:SetScript("OnClick", function()
-		local _, msg = GH:MakeRecruitMacro("post")
-		GH:Msg(msg)
-	end)
-	Tip(t.make, L.MAC_MAKE_TIP)
-	t.makeCopy = W.Button(area, L.MAC_MAKE_COPY, 150, 22)
-	t.makeCopy:SetPoint("LEFT", t.make, "RIGHT", 6, 0)
-	t.makeCopy:SetScript("OnClick", function()
-		local _, msg = GH:MakeRecruitMacro("copy")
-		GH:Msg(msg)
-	end)
-	Tip(t.makeCopy, L.MAC_MAKE_COPY_TIP)
-	t.slots = W.Text(area, "GameFontHighlightSmall", "")
-	t.slots:SetPoint("LEFT", t.makeCopy, "RIGHT", 8, 0)
-	t.slots:SetWidth(100)
 	t.macroHint = W.Text(area, "GameFontDisableSmall", "")
-	t.macroHint:SetPoint("TOPLEFT", RIGHT_X, -320)
-	t.macroHint:SetWidth(TEXT_W)
-	t.status = W.Text(area, "GameFontHighlightSmall", "")
-	t.status:SetPoint("TOPLEFT", RIGHT_X, -340)
-	t.status:SetWidth(TEXT_W)
-	t.status:SetWordWrap(true)
-	t.status:SetHeight(28)
-	t.status:SetJustifyV("TOP")
+	t.macroHint:SetPoint("TOPLEFT", RIGHT_X + 164, -336)
+	t.macroHint:SetWidth(TEXT_W - 164)
+	t.macroHint:SetWordWrap(true)
+	t.macroHint:SetHeight(26)
+	t.macroHint:SetJustifyV("TOP")
+
+	-- Discord / forums
+	t.whereOutside = W.Text(area, "GameFontNormalSmall", L.REC_WHERE_OUTSIDE)
+	t.whereOutside:SetPoint("TOPLEFT", RIGHT_X, -368)
+	t.whereOutside:SetWidth(TEXT_W)
+	t.copy = W.Button(area, L.REC_COPY, 90, 22)
+	t.copy:SetPoint("TOPLEFT", RIGHT_X, -384)
+	t.copy:SetScript("OnClick", function() GH:RecruitCopy() end)
+	Tip(t.copy, L.REC_COPY_TIP)
+	t.finder = W.Button(area, L.REC_FINDER, 140, 22)
+	t.finder:SetPoint("LEFT", t.copy, "RIGHT", 6, 0)
+	t.finder:SetScript("OnClick", function()
+		if InCombatLockdown() or type(ToggleGuildFinder) ~= "function" then return end
+		pcall(ToggleGuildFinder)
+	end)
+	Tip(t.finder, L.REC_FINDER_TIP)
+	-- the post status in words (kept for the self-test / tooltip readers) and the 1-2-3 note
+	t.status = t.postState
 	t.note = W.Text(area, "GameFontDisableSmall", "")
-	t.note:SetPoint("TOPLEFT", RIGHT_X, -376)
+	t.note:SetPoint("TOPLEFT", RIGHT_X, -412)
 	t.note:SetWidth(TEXT_W)
 	t.note:SetWordWrap(true)
-	t.note:SetHeight(40)
+	t.note:SetHeight(28)
 	t.note:SetJustifyV("TOP")
+end
+
+-- R3: Guild totals (everyone), the rejoined note (officers) and "Suggest from your group" (members)
+local GROUP_PICK = 4
+local function BuildTotals(t, area)
+	t.totalsTitle = Header(area, L.REC_TOTALS_TITLE, LEFT_X, -344)
+	t.totals = W.Text(area, "GameFontHighlightSmall", "")
+	t.totals:SetPoint("TOPLEFT", LEFT_X, -364)
+	t.totals:SetWidth(TEXT_W)
+	t.totals:SetWordWrap(true)
+	t.totals:SetHeight(28)
+	t.totals:SetJustifyV("TOP")
+	t.rejoined = W.Text(area, "GameFontDisableSmall", "")
+	t.rejoined:SetPoint("TOPLEFT", LEFT_X, -394)
+	t.rejoined:SetWidth(TEXT_W)
+	t.rejoined:SetWordWrap(true)
+	t.rejoined:SetHeight(36)
+	t.rejoined:SetJustifyV("TOP")
+	t.groupTitle = W.Text(area, "GameFontNormalSmall", L.SUG_GROUP_TITLE)
+	t.groupTitle:SetPoint("TOPLEFT", LEFT_X, -394)
+	t.groupNone = W.Text(area, "GameFontDisableSmall", L.SUG_GROUP_NONE)
+	t.groupNone:SetPoint("TOPLEFT", LEFT_X, -410)
+	t.groupNone:SetWidth(TEXT_W)
+	t.groupNone:SetWordWrap(true)
+	t.groupNone:SetHeight(28)
+	t.groupNone:SetJustifyV("TOP")
+	t.group = {}
+	for i = 1, GROUP_PICK do
+		local b = W.Button(area, "", 96, 20)
+		b:SetPoint("TOPLEFT", LEFT_X + (i - 1) * 100, -410)
+		b:SetScript("OnClick", function(self)
+			if self.pick then GH:SuggestToOfficers(self.pick.name, self.pick.k, self.pick.ro) end
+		end)
+		Tip(b, L.SUG_GROUP_TIP)
+		t.group[i] = b
+	end
 end
 
 local function BuildMembers(page)
 	local t = {}
 	GH.recruitTab = t
-	t.side = W.SideList(page, { { key = "recruit", label = L.REC_SIDE_RECRUIT } }, function() GH:DrawRecruitPage() end)
+	t.side = W.SideList(page, { { key = "recruit", label = L.REC_SIDE_RECRUIT }, { key = "officer", label = L.REC_SIDE_OFFICER },
+		{ key = "trials", label = L.REC_SIDE_TRIALS } },
+		function() GH:DrawRecruitPage() end)
 	t.side:SetPoint("TOPLEFT", 2, 0)
 	t.side:SetPoint("BOTTOMLEFT", 2, 2)
 	t.side:SetWidth(SIDE_W)
@@ -401,6 +479,9 @@ local function BuildMembers(page)
 	BuildMakeup(t, body)
 	BuildText(t, body)
 	BuildButtons(t, body)
+	BuildTotals(t, body)
+	-- R2: the officers' lists (UI\RecruitOffPage.lua), a second body on the same area
+	if GH.BuildOfficerPage then GH:BuildOfficerPage(t, area) end
 	t.lock = W.Text(area, "GameFontNormal", "", "CENTER")
 	t.lock:SetPoint("CENTER")
 	t.lock:SetWidth(500)
@@ -434,6 +515,7 @@ function GH:UpdateRecruitCounter()
 		if not ok then err = L["REC_ERR_" .. tostring(why):upper()] or L.REC_ERR_TEXT end
 	end
 	t.textErr:SetText(err or t.lastErr or "")
+	if t.unsaved then t.unsaved:SetShown(t.dirty == true and IsOfficerMe()) end
 	t.textOk = not err
 end
 
@@ -510,12 +592,63 @@ local function DrawText(t, officer)
 	if t.dirty then t.share:SetActive(true) else t.share:SetActive(false) end
 end
 
-local function DrawButtons(t)
+local function SetColorT(fs, c) fs:SetTextColor(c[1], c[2], c[3]) end
+
+local function DrawButtons(t, officer)
 	local p = GH:RecruitPub()
 	local has = p.ad ~= nil
+	local chan = W.ChatColor("CHANNEL1")
+	SetColorT(t.whereChannel, chan)
+	SetColorT(t.whereOutside, W.COLOR.highlight)
+	-- preview: how the line reads in chat
+	local set = GH:RecruitMacroSet()
+	t.preview:SetText(has and L.REC_PREVIEW:format(GH.RECRUIT_CHANNELS[set.channel], U.ShortName(GH:MyName()), p.ad) or L.REC_PREVIEW_NONE)
+	SetColorT(t.preview, has and chan or W.COLOR.gray)
+	t.unsaved:SetShown(officer and t.dirty == true)
+
+	-- Post buttons: greyed with the reason while capped (PostAd checks everything again on the click)
+	local state, ready = GH:AdShortStatus()
+	t.postState:SetText(state)
+	if ready then SetColorT(t.postState, W.COLOR.green) else SetColorT(t.postState, W.COLOR.normal) end
+	for kind, b in pairs(t.post) do
+		local why, _, _, note = GH:AdBlockReason(kind)
+		if note then why = nil end -- the first click shows the one-time note
+		Greyed(b, why ~= nil, why and (why:sub(1, 1):upper() .. why:sub(2)))
+	end
+
+	-- the optional post button for the bar: only while posting is on
+	local postOn = p.post and true or false
+	t.postOff:SetShown(not postOn)
+	for _, f in ipairs({ t.macroTitle, t.drag, t.channel, t.make, t.slots, t.macroHint }) do f:SetShown(postOn) end
+	for _, b in ipairs(t.icons) do b:SetShown(postOn) end
+	if postOn then
+		t.drag.icon:SetTexture(W.IconPath(GH.RECRUIT_ICONS[set.icon]))
+		t.channel:SetLabel(L.MAC_CHANNEL:format(GH.RECRUIT_CHANNELS[set.channel]))
+		for i, b in ipairs(t.icons) do
+			W.SetMarkIcon(b.check, b.checkText, i == set.icon and 1 or nil)
+		end
+		local st = GH:RecruitMacroState("post")
+		local combat = InCombatLockdown()
+		local used, max = GH:MacroSlots()
+		local full = used and max and used >= max
+		if st.taken then
+			t.make:SetLabel(L.MAC_MAKE)
+			Greyed(t.make, true, L.MAC_TAKEN)
+		elseif st.exists then
+			t.make:SetLabel(st.needsUpdate and L.MAC_UPDATE or L.MAC_READY)
+			Greyed(t.make, combat or not st.needsUpdate, combat and L.MAC_COMBAT or L.MAC_READY_TIP)
+		else
+			t.make:SetLabel(L.MAC_MAKE)
+			Greyed(t.make, combat or full, combat and L.MAC_COMBAT or L.MAC_FULL:format(used or 0, max or 0))
+		end
+		t.drag:SetAlpha(st.exists and 1 or 0.4)
+		if t.drag.icon.SetDesaturated then t.drag.icon:SetDesaturated(not st.exists) end
+		t.slots:SetText(used and L.MAC_SLOTS:format(max - used, max) or "")
+		t.macroHint:SetText(L.MAC_HINT:format(set.channel))
+	end
+
+	-- Discord / forums
 	Greyed(t.copy, not has, L.AD_NO_TEXT)
-	local wait = GH:GuildShareWait()
-	Greyed(t.guildShare, (not has) or wait > 0, (not has) and L.AD_NO_TEXT or L.AD_SHARE_WAIT:format(math.ceil(wait / 60)))
 	local finder = false
 	if C_ClubFinder and type(C_ClubFinder.IsEnabled) == "function" and type(ToggleGuildFinder) == "function" then
 		local ok, on = pcall(C_ClubFinder.IsEnabled)
@@ -523,38 +656,38 @@ local function DrawButtons(t)
 	end
 	t.finder:SetShown(finder)
 	Greyed(t.finder, InCombatLockdown(), L.MAC_COMBAT)
+	t.note:SetText(officer and L.REC_NOTE_OFFICER or L.REC_NOTE_MEMBER)
+end
 
-	-- the macro
-	local set = GH:RecruitMacroSet()
-	t.drag.icon:SetTexture(W.IconPath(GH.RECRUIT_ICONS[set.icon]))
-	t.channel:SetLabel(L.MAC_CHANNEL:format(GH.RECRUIT_CHANNELS[set.channel]))
-	for i, b in ipairs(t.icons) do
-		W.SetMarkIcon(b.check, b.checkText, i == set.icon and 1 or nil)
-	end
-	local st = GH:RecruitMacroState("post")
-	local combat = InCombatLockdown()
-	local used, max = GH:MacroSlots()
-	local full = used and max and used >= max
-	if st.taken then
-		t.make:SetLabel(L.MAC_MAKE)
-		Greyed(t.make, true, L.MAC_TAKEN)
-	elseif st.exists then
-		t.make:SetLabel(st.needsUpdate and L.MAC_UPDATE or L.MAC_READY)
-		Greyed(t.make, combat or not st.needsUpdate, combat and L.MAC_COMBAT or L.MAC_READY_TIP)
+-- R3: totals for everyone; officers see who came back, members get the group pick.
+local function DrawTotals(t, officer)
+	local s = GH:RecruitTotals()
+	if s.joined or s.avg then
+		t.totals:SetText(L.REC_TOTALS:format(tostring(s.joined or "?"), tostring(s.stay or "?"),
+			s.avg and ("%.1f"):format(s.avg) or "?"))
 	else
-		t.make:SetLabel(L.MAC_MAKE)
-		Greyed(t.make, combat or full, combat and L.MAC_COMBAT or L.MAC_FULL:format(used or 0, max or 0))
+		t.totals:SetText(L.REC_TOTALS_OFF)
 	end
-	local cst = GH:RecruitMacroState("copy")
-	t.makeCopy:SetLabel(cst.exists and (cst.needsUpdate and L.MAC_UPDATE_COPY or L.MAC_READY_COPY) or L.MAC_MAKE_COPY)
-	Greyed(t.makeCopy, combat or cst.taken or (cst.exists and not cst.needsUpdate) or (not cst.exists and full),
-		combat and L.MAC_COMBAT or (cst.taken and L.MAC_TAKEN) or (cst.exists and L.MAC_READY_TIP) or L.MAC_FULL:format(used or 0, max or 0))
-	t.drag:SetAlpha(st.exists and 1 or 0.4)
-	if t.drag.icon.SetDesaturated then t.drag.icon:SetDesaturated(not st.exists) end
-	t.slots:SetText(used and L.MAC_SLOTS:format(max - used, max) or "")
-	t.macroHint:SetText(L.MAC_HINT:format(set.channel))
-	t.status:SetText(GH:AdStatusText())
-	t.note:SetText(IsOfficerMe() and L.REC_NOTE_OFFICER or L.REC_NOTE_MEMBER)
+	t.rejoined:SetShown(officer)
+	if officer then
+		local lines = {}
+		for _, r in ipairs(GH:RecruitRejoins()) do
+			lines[#lines + 1] = L.REC_REJOINED:format(U.ShortName(r.name), date("%d %b", r.left))
+		end
+		t.rejoined:SetText(table.concat(lines, "  "))
+	end
+	local picks = officer and {} or GH:GroupPickNames()
+	t.groupTitle:SetShown(not officer)
+	t.groupNone:SetShown(not officer and #picks == 0)
+	for i, b in ipairs(t.group) do
+		local p = picks[i]
+		b.pick = p
+		b:SetShown(p ~= nil)
+		if p then
+			b:SetLabel(U.ShortName(p.name))
+			Greyed(b, GH:SuggestBlock(p.name) ~= nil, GH:SuggestBlock(p.name))
+		end
+	end
 end
 
 -- Redraws the page if it is on screen.
@@ -565,14 +698,25 @@ function GH:DrawRecruitPage()
 	local on = self:FeatureOn("recruit") and IsInGuild()
 	t.lock:SetShown(not on)
 	t.lock:SetText(on and "" or (IsInGuild() and L.AD_FEATURE_OFF or L.NOT_IN_GUILD))
-	t.body:SetShown(on)
-	if not on then return end
 	local officer = IsOfficerMe()
+	-- R2: the side list's "Officer lists" only for officers
+	-- R3: and "Suggestions & trials"
+	for _, key in ipairs({ "officer", "trials" }) do
+		if t.side.buttons[key] then t.side.buttons[key]:SetShown(on and officer) end
+		if t.side.selected == key and not (on and officer) then t.side:Select("recruit") end
+	end
+	local offPage = on and (t.side.selected == "officer" or t.side.selected == "trials")
+	t.body:SetShown(on and not offPage)
+	if t.offBody then t.offBody:SetShown(offPage) end
+	if t.off2Body and not offPage then t.off2Body:Hide() end
+	if offPage then return self:DrawOfficerPage() end
+	if not on then return end
 	if officer and (t.draftV or 0) < (self:RecruitPub().v or 0) and not t.dirty then ResetDraft(t) end
 	DrawNeeds(t, officer)
 	DrawMakeup(t)
 	DrawText(t, officer)
-	DrawButtons(t)
+	DrawButtons(t, officer)
+	DrawTotals(t, officer)
 end
 
 function GH:ShowMembersTab(page)

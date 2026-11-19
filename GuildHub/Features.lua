@@ -49,6 +49,8 @@ function GH:RegisterFeature(f)
 			gate = type(m.gate) == "function" and m.gate or nil,
 			onSend = type(m.onSend) == "function" and m.onSend or nil,
 			urgent = type(m.urgent) == "function" and m.urgent or nil,
+			-- R2: officer = true → sent on the OFFICER channel and accepted only from it (Comm.lua)
+			officer = m.officer == true or nil,
 		}
 	end
 	if self.started then self:ApplyFeatures() end -- registered late (tests): start it like the others
