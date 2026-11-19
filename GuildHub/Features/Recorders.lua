@@ -17,7 +17,11 @@
 --            key = encounterID:instanceID:floor(t / 300) (the same kill from several computers merges later)
 --   tries = { [day] = { [encounterID] = failed attempts } }  day = floor(t / 86400)
 --   joins = { [name] = ts }                from the guild event log (about a day precise)
---   log   = { { t, ty, p1, p2, r }, ... }  every guild event-log entry, newest first, no doubles
+--   log   = { { t, ty, p1, p2, r, u }, ... } every guild event-log entry, newest first, no doubles
+--            r = rank (name or number), u = how coarse t is (seconds of the largest unit the game gave:
+--            hour / day / month / year; 0.4.0-b3, missing on older entries)
+--   logFix = 1                             the one-time cleanup of doubles has run (0.4.0-b3)
+--   logFixed = n                           how many doubles were removed so far (self-test)
 --   motd  = { { t, s }, ... }              the message of the day when it changed, newest first
 -- }
 -- char.rec = { hours = { [slot] = samples } } (own character only)
@@ -37,7 +41,7 @@ local function Now() return U.Now() end
 
 local function NewRec()
 	return { v = 1, started = Now(), first = {}, gone = {}, lvl = {}, hours = { all = {}, weeks = {} },
-		names = {}, kills = {}, tries = {}, joins = {}, log = {}, motd = {} }
+		names = {}, kills = {}, tries = {}, joins = {}, log = {}, motd = {}, logFix = 1 }
 end
 GH.NewRecorderData = NewRec
 
@@ -47,6 +51,74 @@ local function Rec()
 end
 
 local function On() return GH.recStarted and GH:FeatureOn("rec") end
+
+------------------------------------------------------------------------
+-- Guild event log: the same entry across reads (0.4.0-b3)
+-- The game gives each entry's age as years / months / days / hours "ago". For old entries only the
+-- big unit moves (an entry stays "2 months ago" for weeks), so the time we work out from it can be
+-- off by up to one unit; two reads of the same entry match within that unit (+ 36 h).
+------------------------------------------------------------------------
+local HOUR, DAY = 3600, 86400
+local UNITS = { 365 * DAY, 30 * DAY, DAY, HOUR } -- year, month, day, hour
+local LOG_SLACK = 36 * HOUR
+
+-- age in seconds and its unit (the largest unit with a value; under an hour = HOUR); nil when a
+-- field is secret or odd (the entry is skipped)
+local function LogAge(y, mo, d, h)
+	if y == nil and mo == nil and d == nil and h == nil then return nil end -- no age at all: unknown
+	local v, age, unit = { y, mo, d, h }, 0, nil
+	for i = 1, 4 do
+		local x = v[i]
+		if x == nil then x = 0 end -- Blizzard's own log treats nil as 0
+		if U.IsSecret(x) or type(x) ~= "number" or x ~= x or x < 0 or x > 1e5 then return nil end
+		if x > 0 and not unit then unit = UNITS[i] end
+		age = age + x * UNITS[i]
+	end
+	return age, unit or HOUR
+end
+
+-- the unit the game would give an entry of this age (entries saved before 0.4.0-b3 have no `u`)
+local function UnitForAge(age)
+	for i = 1, 3 do if age >= UNITS[i] then return UNITS[i] end end
+	return HOUR
+end
+
+local function LogTol(u1, u2) return math.max(u1 or 0, u2 or 0) * 1.2 + LOG_SLACK end
+
+local function EntryUnit(e, now)
+	return type(e.u) == "number" and e.u or UnitForAge(math.max(0, now - e.t))
+end
+
+local function LogKey(e) return e.ty .. "\1" .. tostring(e.p1) .. "\1" .. tostring(e.p2) .. "\1" .. tostring(e.r) end
+
+-- Doubles in a saved log: the same type, names and rank within the unit's tolerance. Keeps the
+-- oldest of each; remove = true takes the others out. Returns how many doubles there are.
+local function LogDoubles(list, now, remove)
+	local order = {}
+	for i = 1, #list do order[#order + 1] = i end
+	table.sort(order, function(a, b) return list[a].t < list[b].t end)
+	local kept, drop, n = {}, {}, 0
+	for _, i in ipairs(order) do
+		local e = list[i]
+		local k = LogKey(e)
+		local same = false
+		for _, o in ipairs(kept[k] or {}) do
+			if math.abs(e.t - o.t) <= LogTol(EntryUnit(e, now), EntryUnit(o, now)) then same = true break end
+		end
+		if same then
+			n = n + 1
+			drop[i] = true
+		else
+			kept[k] = kept[k] or {}
+			table.insert(kept[k], e)
+		end
+	end
+	if remove and n > 0 then
+		for i = #list, 1, -1 do if drop[i] then table.remove(list, i) end end
+	end
+	return n
+end
+GH.RecLogDoubles = LogDoubles
 
 ------------------------------------------------------------------------
 -- Saved-data check (Store.lua GetGuildDB): types always; entries and caps once per session
@@ -128,8 +200,16 @@ function GH:CheckRecorderData(gdb, deep)
 	for i = MAX.tryDays + 1, #days do r.tries[days[i]] = nil end
 	for i = #r.log, 1, -1 do
 		local e = r.log[i]
-		if type(e) ~= "table" or type(e.t) ~= "number" or type(e.ty) ~= "string" then table.remove(r.log, i) end
+		if type(e) ~= "table" or type(e.t) ~= "number" or type(e.ty) ~= "string" then table.remove(r.log, i)
+		elseif e.u ~= nil and (type(e.u) ~= "number" or e.u < 0) then e.u = nil end
 	end
+	-- 0.4.0-b3: once, take out the doubles older versions could save (keeps the oldest of each)
+	if r.logFix ~= 1 then
+		local n = LogDoubles(r.log, Now(), true)
+		r.logFixed = (type(r.logFixed) == "number" and r.logFixed or 0) + n
+		r.logFix = 1
+	end
+	if r.logFixed ~= nil and type(r.logFixed) ~= "number" then r.logFixed = nil end
 	Trim(r.log, MAX.log)
 	for i = #r.motd, 1, -1 do
 		local e = r.motd[i]
@@ -320,51 +400,101 @@ end
 ------------------------------------------------------------------------
 -- Guild event log (once per session, out of combat) and the message of the day
 ------------------------------------------------------------------------
-local function Ago(y, mo, d, h)
-	local n = function(x) return (type(x) == "number" and not U.IsSecret(x)) and x or 0 end
-	return n(y) * 365 * 86400 + n(mo) * 30 * 86400 + n(d) * 86400 + n(h) * 3600
+local LOG_READ_MAX = 500
+
+local function LogName(p)
+	if p == nil or U.IsSecret(p) then return nil end
+	return U.ValidName(U.FullName(p))
 end
 
+local function LogRank(rank)
+	if rank == nil or U.IsSecret(rank) then return nil end
+	if type(rank) == "number" then return rank end
+	if type(rank) == "string" then return U.CleanText(rank, 32) end -- Blizzard's log shows it as a rank name
+	return nil
+end
+
+-- the same event? (unknown names / rank match anything; the game may not know an old name yet)
+local function SameEvent(e, x)
+	return e.ty == x.ty and (e.p1 == x.p1 or e.p1 == nil or x.p1 == nil)
+		and (e.p2 == x.p2 or e.p2 == nil or x.p2 == nil) and (e.r == x.r or e.r == nil or x.r == nil)
+end
+
+-- Reads the game's log. Each entry of this read matches at most one saved entry (the closest, exact
+-- names first), so two real events that look alike both stay. A complete read also takes out saved
+-- copies the game doesn't list inside the time it covers (doubles with a wrong time), but only of
+-- events the game does list: a saved entry is never the last of its kind to go.
 function GH:ReadEventLog()
 	if not On() then return end
 	local r = Rec()
 	if not r or type(GetNumGuildEvents) ~= "function" or type(GetGuildEventInfo) ~= "function" then return end
 	local ok, n = pcall(GetNumGuildEvents)
-	if not ok or type(n) ~= "number" or U.IsSecret(n) then return end
+	if not ok or U.IsSecret(n) or type(n) ~= "number" then return end
 	local now = Now()
-	local added = {}
-	for i = 1, math.min(n, 500) do
+	local read, complete = {}, n <= LOG_READ_MAX
+	for i = 1, math.min(n, LOG_READ_MAX) do
 		local okE, ty, p1, p2, rank, y, mo, d, h = pcall(GetGuildEventInfo, i)
-		if okE and type(ty) == "string" and not U.IsSecret(ty) and LOG_TYPES[ty] then
-			local t = now - Ago(y, mo, d, h)
-			p1 = p1 and U.ValidName(U.FullName(p1)) or nil
-			p2 = p2 and U.ValidName(U.FullName(p2)) or nil
-			rank = (type(rank) == "number" and not U.IsSecret(rank)) and rank or nil
-			-- the same entry seen again (the game keeps them, only the "ago" moves): same type and
-			-- names within 36 hours = the same
-			local dup = false
-			for _, e in ipairs(r.log) do
-				if e.ty == ty and e.p1 == p1 and e.p2 == p2 and e.r == rank and math.abs(e.t - t) <= 36 * 3600 then
-					dup = true
-					break
-				end
-			end
-			if not dup then
-				for _, e in ipairs(added) do
-					if e.ty == ty and e.p1 == p1 and e.p2 == p2 and e.r == rank and math.abs(e.t - t) <= 3600 then dup = true break end
-				end
-			end
-			if not dup then added[#added + 1] = { t = t, ty = ty, p1 = p1, p2 = p2, r = rank } end
-			local joiner = (ty == "join" and p1) or (ty == "invite" and p2) or nil
-			if joiner and (ty == "join" or not r.joins[joiner]) then
-				if not r.joins[joiner] or t < r.joins[joiner] then r.joins[joiner] = t end
+		if not okE or U.IsSecret(ty) then
+			complete = false
+		elseif type(ty) == "string" and LOG_TYPES[ty] then
+			local age, unit = LogAge(y, mo, d, h)
+			if not age then
+				complete = false
+			else
+				read[#read + 1] = { t = now - age, u = unit, ty = ty, p1 = LogName(p1), p2 = LogName(p2), r = LogRank(rank) }
 			end
 		end
 	end
+	local used, added = {}, {}
+	for _, x in ipairs(read) do
+		local best, bestWild, bestD
+		for _, e in ipairs(r.log) do
+			if not used[e] and SameEvent(e, x) then
+				local dd = math.abs(e.t - x.t)
+				if dd <= LogTol(EntryUnit(e, now), x.u) then
+					local wild = not (e.p1 == x.p1 and e.p2 == x.p2 and e.r == x.r)
+					if not best or (bestWild and not wild) or (wild == bestWild and dd < bestD) then
+						best, bestWild, bestD = e, wild, dd
+					end
+				end
+			end
+		end
+		if best then
+			used[best] = true
+			best.p1, best.p2, best.r = best.p1 or x.p1, best.p2 or x.p2, best.r or x.r
+			-- the older time wins: a time worked out from "N months ago" is never too old, only too
+			-- new (and an age of 0 from a log that wasn't loaded yet is the newest of all)
+			if x.t < best.t then best.t, best.u = x.t, x.u end
+			if not best.u then best.u = x.u end
+		else
+			added[#added + 1] = x
+		end
+		local joiner = (x.ty == "join" and x.p1) or (x.ty == "invite" and x.p2) or nil
+		if joiner and (x.ty == "join" or not r.joins[joiner]) then
+			if not r.joins[joiner] or x.t < r.joins[joiner] then r.joins[joiner] = x.t end
+		end
+	end
+	local removed = 0
+	if complete and #read > 0 then
+		local oldest = read[1]
+		for _, x in ipairs(read) do if x.t < oldest.t then oldest = x end end
+		local from = oldest.t + LogTol(oldest.u)
+		local listed = {}
+		for _, x in ipairs(read) do listed[LogKey(x)] = true end
+		for i = #r.log, 1, -1 do
+			local e = r.log[i]
+			if not used[e] and e.t >= from and listed[LogKey(e)] then
+				table.remove(r.log, i)
+				removed = removed + 1
+			end
+		end
+	end
+	if removed > 0 then r.logFixed = (type(r.logFixed) == "number" and r.logFixed or 0) + removed end
 	for _, e in ipairs(added) do r.log[#r.log + 1] = e end
 	table.sort(r.log, function(a, b) return a.t > b.t end)
 	Trim(r.log, MAX.log)
 	self.recLogRead = true
+	self.recLogGame = n -- self-test: how many entries the game has
 end
 
 function GH:QueryEventLog()
@@ -379,13 +509,8 @@ end
 
 function GH:SaveMOTD(text)
 	if not On() then return end
-	if text == nil then
-		local get = (C_GuildInfo and C_GuildInfo.GetMOTD) or GetGuildRosterMOTD
-		if type(get) ~= "function" then return end
-		local ok, s = pcall(get)
-		if not ok then return end
-		text = s
-	end
+	-- text comes only from the GUILD_MOTD event (Core.lua). No C_GuildInfo.GetMOTD /
+	-- GetGuildRosterMOTD here: restricted, the game blocks it (ADDON_ACTION_BLOCKED).
 	if type(text) ~= "string" or U.IsSecret(text) then return end
 	text = U.CleanText(text, MOTD_MAX)
 	if not text or text == "" then return end
@@ -429,7 +554,6 @@ GH:RegisterFeature({
 		GH:On("rec", "ENCOUNTER_END", OnEncounterEnd)
 		GH:On("rec", "PLAYER_LEVEL_UP", OnLevelUp)
 		GH:On("rec", "GUILD_EVENT_LOG_UPDATE", function() GH:ReadEventLog() end)
-		GH:On("rec", "GUILD_MOTD", function(_, text) GH:SaveMOTD(text) end)
 		GH:On("rec", "PLAYER_REGEN_ENABLED", function()
 			if GH.recLogAfterCombat then GH.recLogAfterCombat = nil; GH:QueryEventLog() end
 		end)
@@ -439,7 +563,7 @@ GH:RegisterFeature({
 			if GH.rosterReady then GH:RecordRoster(GH.roster) end
 			GH:SampleOnline()
 			GH:QueryEventLog()
-			GH:SaveMOTD()
+			GH:SaveMOTD(GH.lastMOTD) -- the login GUILD_MOTD came before this feature started
 		end, FIRST_SAMPLE)
 	end,
 	disable = function()
@@ -452,6 +576,14 @@ GH:RegisterFeature({
 		local bad = (#r.kills > MAX.kills) or (#r.log > MAX.log) or (#r.motd > MAX.motd)
 		if bad then api.Problem("DB", "history", "a list is over its cap") end
 		local c = GH:RecorderCounts()
-		api.Info(("history %d/%d/%d/%d"):format(c.first, c.hours, c.kills, c.log))
+		-- 0.4.0-b3: doubles left in the guild log (should be 0), doubles removed so far, the game's count
+		api.Count()
+		local okD, doubles = pcall(LogDoubles, r.log, Now(), false)
+		-- (info only: two real events can look alike, e.g. the same player invited twice in a day)
+		if not okD then api.Problem("DB", "history", "log check failed") doubles = "!" end
+		api.Info(("history %d/%d/%d/%d, log doubles %s, removed %d, game %s"):format(c.first, c.hours, c.kills, c.log,
+			tostring(doubles), type(r.logFixed) == "number" and r.logFixed or 0, tostring(GH.recLogGame or "-")))
+		-- 0.4.0-b3: message of the day only from the GUILD_MOTD event (seen this session y/n, saved count)
+		api.Info(("motd seen %s, saved %d"):format(type(GH.lastMOTD) == "string" and "y" or "n", c.motd))
 	end,
 })

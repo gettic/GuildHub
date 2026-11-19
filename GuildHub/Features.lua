@@ -232,6 +232,7 @@ function GH:OnShareChanged()
 	if self.RefreshProfTab then self:RefreshProfTab() end
 	if self.MapRedraw then self:MapRedraw() end
 	if self.optionsChanged then self:optionsChanged() end
+	if self.RefreshGuide then self:RefreshGuide() end
 end
 
 ------------------------------------------------------------------------

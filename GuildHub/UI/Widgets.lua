@@ -240,6 +240,50 @@ function W.GearArt()
 	return "text", g.text
 end
 
+-- Getting started card ticks (UI\Guide.lua through Card.lua): Blizzard's checkmark atlas, else
+-- the ready-check files; "off" = the waiting mark, greyed. Last fallback: a text mark.
+W.ART.guide = {
+	done = { atlas = "common-icon-checkmark", file = "Interface\\RaidFrame\\ReadyCheck-Ready", text = "+" },
+	todo = { file = "Interface\\RaidFrame\\ReadyCheck-Waiting", text = "?" },
+	off = { file = "Interface\\RaidFrame\\ReadyCheck-Waiting", text = "-", grey = true },
+}
+
+local fileKnown = {}
+local function HasFile(path)
+	if fileKnown[path] == nil then
+		local ok, id = false, nil
+		if GetFileIDFromPath then ok, id = pcall(GetFileIDFromPath, path) end
+		fileKnown[path] = ok and type(id) == "number" and id > 0 or false
+	end
+	return fileKnown[path]
+end
+
+-- Which art a tick state gets: "atlas", name / "file", path / "text", sign.
+function W.GuideArt(state)
+	local g = W.ART.guide[state] or W.ART.guide.off
+	if g.atlas and W.HasAtlas(g.atlas) then return "atlas", g.atlas end
+	if g.file and HasFile(g.file) then return "file", g.file end
+	return "text", g.text
+end
+
+-- Puts a tick state on an icon texture + its text fallback font string.
+function W.SetGuideIcon(tex, mark, state)
+	local kind, art = W.GuideArt(state)
+	local grey = W.ART.guide[state] and W.ART.guide[state].grey
+	tex:SetShown(kind ~= "text")
+	mark:SetShown(kind == "text")
+	if kind == "atlas" then tex:SetAtlas(art)
+	elseif kind == "file" then tex:SetTexture(art) end
+	if tex.SetDesaturated then tex:SetDesaturated(grey and true or false) end
+	tex:SetAlpha(grey and 0.6 or 1)
+	if kind == "text" then
+		mark:SetText(art)
+		local c = state == "done" and W.COLOR.green or (grey and W.COLOR.gray or W.COLOR.normal)
+		mark:SetTextColor(c[1], c[2], c[3])
+	end
+	return kind
+end
+
 local function GearButton(parent, size)
 	local kind, art = W.GearArt()
 	if kind == "text" then

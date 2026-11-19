@@ -137,6 +137,12 @@ BuildOptionsBase = function()
 		name = L.OPT_TITLE,
 		args = {
 			intro = { type = "description", order = 1, name = L.OPT_INTRO, fontSize = "medium" },
+			-- the Getting started card again (UI\Guide.lua)
+			guide = {
+				type = "execute", order = 1.5,
+				name = L.OPT_GUIDE, desc = L.OPT_GUIDE_DESC,
+				func = function() GH:ShowGuide() end,
+			},
 			debug = {
 				type = "toggle", order = 10, width = "full",
 				name = L.OPT_DEBUG, desc = L.OPT_DEBUG_DESC,

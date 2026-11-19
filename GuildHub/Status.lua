@@ -217,6 +217,13 @@ function GH:GetOwnStatus()
 	return m.status
 end
 
+-- Getting started tick (UI\Guide.lua): this character has set a status at least once.
+local function UsedStatus(set)
+	if not set then return end
+	GH.db.char.usedStatus = true
+	if GH.RefreshGuide then GH:RefreshGuide() end
+end
+
 -- Turn a preset on; clicking the active one again turns it off.
 function GH:SetPreset(p)
 	if p ~= nil and not PRESET_OK[p] then return end
@@ -236,6 +243,7 @@ function GH:SetPreset(p)
 	own.ts = now
 	self:SendStatus()
 	self:RefreshBoard()
+	UsedStatus(p ~= nil)
 end
 
 function GH:SetStatusText(text)
@@ -251,6 +259,7 @@ function GH:SetStatusText(text)
 	own.ts = now
 	self:SendStatus()
 	self:RefreshBoard()
+	UsedStatus(t ~= nil and t ~= "")
 end
 
 function GH:SetLfgDungeon(d)
@@ -267,6 +276,7 @@ function GH:SetLfgDungeon(d)
 	own.ts = U.Now()
 	self:SendStatus()
 	self:RefreshBoard()
+	UsedStatus(true)
 end
 
 function GH:ClearStatus()

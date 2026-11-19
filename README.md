@@ -2,6 +2,22 @@
 
 A guild hub for WoW Forever that lets guildmates see what everyone is doing, where they are on the map and what they can craft.
 
+## Getting started
+
+After you install Guild Hub, a small "Getting started" card shows a short checklist once on each character, if something on it is still to do. It comes right after the map question, or at your next login if you answered that with "Not now". It never shows in combat or in a dungeon, and it ticks itself off as you go. Tick "Don't show this by itself again" to stop it on all your characters. Open it again any time with `/ghub start` or the "Getting started" button in Settings.
+
+**1. Choose what you share.** You only see from others what you share yourself (see [Fair trade](#fair-trade)). Change it any time in Settings > What I share.
+
+- **My position:** you see guildmates' dots on your world map and minimap (see [Guild map](#guild-map)).
+- **My group size:** you see how many players are in guildmates' groups. Only the number, never names. On by default.
+- **My professions:** you can use the Professions tab, the recipe search and the "crafted by" line in tooltips. On by default.
+
+**2. Open each of your profession windows once.** Guild Hub can only read your recipes while the window is open. Do it once per profession (Cooking and First Aid too). After that, new recipes are added by themselves. Herbalism, Skinning and Fishing have no recipe window, so they need nothing.
+
+**3. Set a status.** Type `/ghub` or click the minimap button, then pick one on the Status tab (LFG, Need help, Farming...). Your guild sees it. It clears itself after 1 hour.
+
+On Trial and Veteran accounts the card only says that sharing is locked and that the status board works.
+
 ## What it does now
 
 - Shares basic info (addon version, level, class) with guildmates who also have Guild Hub.
@@ -11,8 +27,8 @@ A guild hub for WoW Forever that lets guildmates see what everyone is doing, whe
 - Small alerts when a guildmate near your level looks for a group, or someone asks for help.
 - A Professions tab: who has which profession, and who can make an item.
 - A "crafted by" line in item tooltips.
-
 - Guild map dots: guildmates who share their position show on the world map and the minimap.
+- A Getting started card with a short checklist.
 
 Planned next: a Map tab in the window. It is not built yet.
 
@@ -80,6 +96,7 @@ Copy the `GuildHub` folder into your WoW `AddOns` folder, then restart the game 
 | `/ghub help` | Show the list of commands |
 | `/ghub status` | Show who has Guild Hub and which version (beta testers too), the guild history counts, and how many addon messages you sent in the last 10 minutes |
 | `/ghub options` | Open Settings |
+| `/ghub start` | Open the Getting started card |
 | `/ghub selftest` | Check the window and saved data; shows one line to copy and send to the author (no names in it). `/ghub selftest full` also checks the Professions tab |
 | `/ghub debug` | Show addon messages |
 | `/ghub test big` | Run a test of splitting a long message |
@@ -92,7 +109,7 @@ Copy the `GuildHub` folder into your WoW `AddOns` folder, then restart the game 
 
 ## Settings
 
-Click the gear button in the title bar of the `/ghub` window (left of the "-"), or use `/ghub options` or the minimap button's right-click. Click the gear again to go back to Status. The same settings are in Esc > Options > AddOns > Guild Hub. There you can switch off automatic activity, the "crafted by" tooltip line and the notes, unmute players, show or hide guildmates without Guild Hub, hide the minimap button, and turn the guild dots on the minimap on or off. The Guild Master sets which ranks count as officers.
+Click the gear button in the title bar of the `/ghub` window (left of the "-"), or use `/ghub options` or the minimap button's right-click. Click the gear again to go back to Status. The same settings are in Esc > Options > AddOns > Guild Hub. There you can switch off automatic activity, the "crafted by" tooltip line and the notes, unmute players, show or hide guildmates without Guild Hub, hide the minimap button, and turn the guild dots on the minimap on or off. The "Getting started" button opens the Getting started card. The Guild Master sets which ranks count as officers.
 
 **What I share.** This is at the top of Settings. It has one line each for your position, your professions and your group size. Each line says "off = you also can't see others'" (see Fair trade). Trial and Veteran accounts can't share, so these lines are locked for them.
 
@@ -104,7 +121,8 @@ Click the gear button in the title bar of the `/ghub` window (left of the "-"), 
 - how many guildmates are online at each hour (totals only)
 - level milestones
 - boss kills and failed attempts
-- the guild event log and the message of the day
+- the guild event log (each entry once; copies saved twice by older versions are removed once, keeping the oldest)
+- the message of the day, as the game shows it to you
 
 Settings shows what is kept and has a "Clear guild history" button. Later versions will show it as guild firsts, anniversaries and an online heatmap.
 
@@ -144,7 +162,8 @@ The addon lives in `GuildHub\`. Files are loaded in this order (see `GuildHub_Fo
 | `UI\StatusTab.lua` | The status board tab |
 | `UI\ProfessionsTab.lua` | The Professions tab |
 | `UI\MiniFrame.lua` | The small mini mode window |
-| `UI\Card.lua` | The "Share my position" card |
+| `UI\Card.lua` | The small card ("Share my position", Getting started) |
+| `UI\Guide.lua` | The Getting started checklist |
 | `UI\MapPins.lua` | Dots on the world map and minimap |
 | `Options.lua` | Settings (the Settings page in the window and the Options page) |
 | `ApiTest.lua` | The `/ghub test api` check |

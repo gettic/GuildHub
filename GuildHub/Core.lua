@@ -59,6 +59,13 @@ function GH:OnEnable()
 	self:On("core", "PLAYER_ENTERING_WORLD", function(...) GH:OnEnteringWorld(...) end)
 	self:On("core", "PLAYER_LEVEL_UP", function(...) GH:OnLevelUp(...) end)
 	self:On("core", "PLAYER_LOGOUT", function(...) GH:OnLogout(...) end)
+	-- The message of the day only comes from this event (it arrives at login, before the
+	-- history feature starts). Never ask with C_GuildInfo.GetMOTD: it is a restricted
+	-- function and the game blocks it for addons (ADDON_ACTION_BLOCKED).
+	self:On("core", "GUILD_MOTD", function(_, text)
+		GH.lastMOTD = text
+		if GH.recStarted and GH.SaveMOTD then GH:SaveMOTD(text) end
+	end)
 
 	self:CheckTrialAccount()
 	self:InitMinimapButton() -- UI\MainFrame.lua
@@ -154,9 +161,12 @@ function GH:OnSlash(input)
 		ns.SelfTest:Start(rest == "full" and "full" or "quick") -- SelfTest.lua
 	elseif cmd == "options" or cmd == "config" or cmd == "settings" then
 		self:OpenOptions()
+	elseif cmd == "start" or cmd == "guide" then
+		self:ShowGuide() -- UI\Guide.lua
 	else
 		self:Msg(L.HELP_HEADER)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_OPEN)
+		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_START)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_STATUS)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_DEBUG)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_TEST)

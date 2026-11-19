@@ -2,6 +2,8 @@
 -- (map, calendar, raid lockouts, guild log ...). One line to copy, also shown in the copy box.
 -- Safety: every check runs in pcall; it never sends a message and never acts for the player.
 -- Functions that would act (invite, promote, sign up) are only checked to EXIST, never called.
+-- Real calls are harmless reads only (QueryGuildEventLog, RequestRaidInfo, C_Calendar.OpenCalendar,
+-- C_QuestLog.RequestLoadQuestByID).
 -- Markers: "-" = the function is missing, "!" = it raised an error, "s" = the answer was secret.
 -- Names checked in Forever's API docs and UI source (plans\offline-tests\wow-ui-source, build
 -- 1.60.1.70959); see plans\v040-beta1\PLAN.md sec. 4.
@@ -14,6 +16,10 @@ local LOG_WAIT = 5 -- seconds to wait for GUILD_EVENT_LOG_UPDATE / UPDATE_INSTAN
 local QUESTS = { 7848, 7761, 6502, 6602 }
 -- spell IDs: Ritual of Summoning; Portal: Stormwind; Portal: Orgrimmar
 local SPELLS = { 698, 10059, 11417 }
+-- 0.4.0-b3 controls, so a "n" can be told apart from a check that never works:
+local SPELL_CONTROL = 6603 -- Auto Attack, every character knows it (else: the first spellbook spell)
+-- zones with dungeon entrances: Burning Steppes (Blackrock Mountain), The Barrens, Badlands
+local ENTRANCE_MAPS = { 1428, 1413, 1418 }
 
 local function Secret(v) return U.IsSecret(v) end
 
@@ -62,20 +68,36 @@ Check("wp", function()
 	if ok ~= true then return ok end
 	return yn(v)
 end)
+-- 0.4.0-b3: entrances on our zone / its continent / three zones that have some (Blizzard's map asks
+-- for the map it shows); "zone/continent/known"
 Check("ent", function()
-	if not mapID or not (C_Map and C_Map.GetMapInfo) then return "-" end
-	-- the continent above our map
-	local id, cont = mapID, nil
-	for _ = 1, 6 do
-		local ok, info = Call(C_Map.GetMapInfo, id)
-		if ok ~= true or type(info) ~= "table" then break end
-		if info.mapType == 2 then cont = id break end -- Enum.UIMapType.Continent
-		if not info.parentMapID or info.parentMapID == 0 then break end
-		id = info.parentMapID
+	local fn = C_EncounterJournal and C_EncounterJournal.GetDungeonEntrancesForMap
+	if type(fn) ~= "function" then return "-" end
+	local function Entrances(id)
+		if not id then return "n" end
+		local ok, list = Call(fn, id)
+		if ok ~= true then return ok end
+		return type(list) == "table" and tostring(#list) or "n"
 	end
-	local ok, list = Call(C_EncounterJournal and C_EncounterJournal.GetDungeonEntrancesForMap, cont or mapID)
-	if ok ~= true then return ok end
-	return type(list) == "table" and tostring(#list) or "n"
+	-- the continent above our map
+	local cont = "n"
+	if mapID and C_Map and C_Map.GetMapInfo then
+		local id = mapID
+		for _ = 1, 6 do
+			local ok, info = Call(C_Map.GetMapInfo, id)
+			if ok ~= true then cont = ok break end
+			if type(info) ~= "table" then break end
+			if info.mapType == 2 then cont = Entrances(id) break end -- Enum.UIMapType.Continent
+			if not info.parentMapID or info.parentMapID == 0 then break end
+			id = info.parentMapID
+		end
+	end
+	local known = 0
+	for _, id in ipairs(ENTRANCE_MAPS) do
+		local n = Entrances(id)
+		if tonumber(n) then known = known + tonumber(n) elseif n ~= "n" then known = n break end
+	end
+	return Entrances(mapID) .. "/" .. cont .. "/" .. tostring(known)
 end)
 Check("canvas", function()
 	return yn(WorldMapFrame and type(WorldMapFrame.AddDataProvider) == "function" and MapCanvasDataProviderMixin ~= nil)
@@ -119,7 +141,10 @@ Check("quest", function()
 		local ok, v = Call(fn, id)
 		bits[#bits + 1] = ok == true and (v and "1" or "0") or ok
 	end
-	return Num(okN, n) .. "," .. table.concat(bits)
+	-- 0.4.0-b3 control: how many quests the game says this character has done (0 on a new one)
+	local okA, all = Call(C_QuestLog and C_QuestLog.GetAllCompletedQuestIDs)
+	local done = okA == true and (type(all) == "table" and tostring(#all) or "n") or okA
+	return Num(okN, n) .. "," .. table.concat(bits) .. "," .. done
 end)
 Check("kill", function()
 	local valid = "-"
@@ -165,48 +190,109 @@ Check("off", function()
 	return a .. "," .. b .. "," .. Exists(CanGuildPromote) -- promote: never called
 end)
 Check("motd", function()
-	local ok, s = Call((C_GuildInfo and C_GuildInfo.GetMOTD) or GetGuildRosterMOTD)
-	if ok ~= true then return ok end
-	return yn(type(s) == "string")
+	-- only "does it exist": calling it is blocked for addons (restricted, ADDON_ACTION_BLOCKED);
+	-- the add-on reads the message of the day from the GUILD_MOTD event instead (seen = y/n)
+	return Exists(C_GuildInfo and C_GuildInfo.GetMOTD) .. "," .. yn(type(GH.lastMOTD) == "string")
 end)
 Check("ej", function() return Has(C_EncounterJournal, "GetLootInfoByIndex") end)
-Check("gbank", function() return yn(type(C_GuildBank) == "table") end)
+-- 0.4.0-b3: the table alone is in every modern client; also the bank functions and Blizzard's bank UI
+Check("gbank", function()
+	local okE, e = Call(C_AddOns and C_AddOns.DoesAddOnExist, "Blizzard_GuildBankUI")
+	return yn(type(C_GuildBank) == "table") .. "," .. Exists(GetNumGuildBankTabs) .. ","
+		.. (okE == true and yn(e) or okE)
+end)
 Check("rep", function()
 	local ok, t = Call(C_Reputation and C_Reputation.GetFactionDataByID, 529)
 	if ok ~= true then return ok end
 	return yn(type(t) == "table")
 end)
-Check("mount", function() return Has(C_MountJournal, "GetNumMounts") end)
+Check("mount", function() -- 0.4.0-b3: the count, not only the name
+	return Has(C_MountJournal, "GetNumMounts") .. "," .. Num(Call(C_MountJournal and C_MountJournal.GetNumMounts))
+end)
 Check("time", function() return Exists(GameTime_GetFormattedTime) end)
+-- 0.4.0-b3: "CLASS,control:summon,portal SW,portal Org" (control = a spell this character surely knows)
 Check("spell", function()
 	local fn = (C_SpellBook and C_SpellBook.IsSpellKnown) or IsSpellKnown
+	local okC, _, class = Call(UnitClass, "player")
+	class = (okC == true and type(class) == "string") and class or "?"
+	local okK, known = Call(fn, SPELL_CONTROL)
+	local control = okK == true and yn(known) or okK
+	if control == "n" and C_SpellBook and Enum and Enum.SpellBookSpellBank then
+		local okI, info = Call(C_SpellBook.GetSpellBookItemInfo, 1, Enum.SpellBookSpellBank.Player)
+		if okI == true and type(info) == "table" and type(info.spellID) == "number" then
+			local okB, v = Call(fn, info.spellID)
+			control = okB == true and (v and "b" or "n") or okB -- b = the first spellbook spell is known
+		end
+	end
 	local r = {}
 	for _, id in ipairs(SPELLS) do
 		local ok, v = Call(fn, id)
 		r[#r + 1] = ok == true and yn(v) or ok
 	end
-	return table.concat(r, ",")
+	return class .. "," .. control .. ":" .. table.concat(r, ",")
 end)
+-- 0.4.0-b3: + the own rank's permission flags (the numbers that are on), to find the officer-chat one
 Check("ochat", function()
 	local ok, v = Call(C_GuildInfo and C_GuildInfo.CanSpeakInOfficerChat)
-	if ok ~= true then return ok end
-	return yn(v)
+	local a = ok == true and yn(v) or ok
+	local flags = "-"
+	local fn = C_GuildInfo and C_GuildInfo.GuildControlGetRankFlags
+	if type(fn) == "function" then
+		local okR, _, _, rankIndex = Call(GetGuildInfo, "player")
+		if okR ~= true then flags = okR
+		elseif type(rankIndex) ~= "number" then flags = "n"
+		else
+			local okF, t = Call(fn, rankIndex + 1)
+			if okF ~= true then flags = okF
+			elseif type(t) ~= "table" then flags = "n"
+			else
+				local on = {}
+				for i = 1, 40 do if t[i] == true then on[#on + 1] = tostring(i) end end
+				flags = #on > 0 and table.concat(on, ".") or "0"
+			end
+		end
+	end
+	return a .. "," .. flags
 end)
-Check("lastonline", function() return Exists(GetGuildRosterLastOnline) end)
+-- 0.4.0-b3: + does it give plain numbers for the first offline member (no names in the line)
+Check("lastonline", function()
+	local has = Exists(GetGuildRosterLastOnline)
+	if has ~= "y" then return has end
+	local okN, n = Call(GetNumGuildMembers)
+	if okN ~= true or type(n) ~= "number" then return has .. "," .. (okN == true and "?" or okN) end
+	for i = 1, math.min(n, 1000) do
+		local okI, _, _, _, _, _, _, _, _, online = Call(GetGuildRosterInfo, i)
+		if okI == "s" then return has .. ",s" end
+		if okI == true and online == false then
+			local ok, y, mo, d, h = Call(GetGuildRosterLastOnline, i)
+			if ok ~= true then return has .. "," .. ok end
+			local any = type(y) == "number" or type(mo) == "number" or type(d) == "number" or type(h) == "number"
+			return has .. "," .. yn(any)
+		end
+	end
+	return has .. ",-" -- nobody offline
+end)
 Check("calday", function(state)
 	return state.calday or "-"
 end)
-Check("qtitle", function()
+-- 0.4.0-b3: "title now, load function exists, load answer" (TestApi asks the game to load the quest
+-- first and waits for QUEST_DATA_LOAD_RESULT: y = loaded, n = failed, - = no answer in time)
+Check("qtitle", function(state)
 	local ok, t = Call(C_QuestLog and C_QuestLog.GetTitleForQuestID, QUESTS[2])
 	local a = ok == true and yn(type(t) == "string") or ok
-	return a .. "," .. Has(C_QuestLog, "RequestLoadQuestByID")
+	return a .. "," .. Has(C_QuestLog, "RequestLoadQuestByID") .. "," .. tostring(state.qload or "-")
 end)
+-- 0.4.0-b3: the number of battleground types (C_PvP alone is in every modern client)
 Check("pvp", function()
-	local a = (type(GetNumBattlegroundTypes) == "function" or type(C_PvP) == "table") and "y" or "-"
+	local a = Num(Call(GetNumBattlegroundTypes))
 	local ok, s = Call(GetBattlefieldStatus, 1)
 	return a .. "," .. (ok == true and tostring(s or "none") or ok)
 end)
-Check("pet", function() return Has(C_PetJournal, "GetNumPets") end)
+Check("pet", function() -- 0.4.0-b3: the counts (all, owned), not only the name
+	local ok, all, owned = Call(C_PetJournal and C_PetJournal.GetNumPets)
+	if ok ~= true then return Has(C_PetJournal, "GetNumPets") .. "," .. ok end
+	return "y," .. Num(true, all) .. "/" .. Num(true, owned)
+end)
 Check("xmog", function() return yn(type(C_TransmogCollection) == "table") end)
 Check("role", function()
 	local ok, r = Call(UnitGroupRolesAssigned, "player")
@@ -315,6 +401,17 @@ function GH:TestApi()
 			Done()
 		end)
 		pcall(RequestRaidInfo)
+	end
+	-- 0.4.0-b3: ask the game for a quest that isn't in the log (a harmless read), for `qtitle`
+	if self.apiTestRunning == state and C_QuestLog and type(C_QuestLog.RequestLoadQuestByID) == "function" then
+		waiting = waiting + 1
+		self:On("apitest", "QUEST_DATA_LOAD_RESULT", function(_, questID, success)
+			if state.qload or U.IsSecret(questID) or questID ~= QUESTS[2] then return end
+			state.qload = (not U.IsSecret(success) and success) and "y" or "n"
+			GH:Off("apitest", "QUEST_DATA_LOAD_RESULT")
+			Done()
+		end)
+		pcall(C_QuestLog.RequestLoadQuestByID, QUESTS[2])
 	end
 	if C_Calendar and type(C_Calendar.OpenCalendar) == "function" then pcall(C_Calendar.OpenCalendar) end
 	-- at the latest after LOG_WAIT seconds

@@ -163,6 +163,7 @@ local function Changed(own)
 	GH.profDirty = true
 	GH:QueueOwnProf()
 	GH:RefreshProfTab()
+	if GH.RefreshGuide then GH:RefreshGuide() end -- Getting started: a window was scanned
 end
 
 -- Skill levels (no window needed). Called at start-up and on SKILL_LINES_CHANGED.

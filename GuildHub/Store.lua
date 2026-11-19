@@ -29,9 +29,13 @@ local defaults = {
 		profMats = true,     -- request whisper says "I'll bring the mats"
 		profFilter = "all",
 		profOnline = false,
+		guideOff = false,    -- "Don't show this by itself again" on the Getting started card (all characters)
 	},
 	char = {
 		trialNoticeShown = false,
+		guideShown = false,  -- the Getting started card showed by itself on this character
+		usedStatus = false,  -- this character has set a status at least once (Getting started tick)
+		guideDeferred = false, -- the guide was skipped after a map "Not now" (tos C2): it shows next login
 	},
 }
 
@@ -133,6 +137,14 @@ function GH:RepairSaved()
 		if v ~= nil and v ~= "ask" and v ~= "yes" and v ~= "no" then
 			c.mapShare = "ask"
 			fixed[#fixed + 1] = "mapShare"
+		end
+		-- Getting started flags: booleans only (a broken one becomes "not yet")
+		for _, k in ipairs({ "guideShown", "usedStatus", "guideDeferred" }) do
+			local f = rawget(c, k)
+			if f ~= nil and type(f) ~= "boolean" then
+				c[k] = false -- (AceDB copies plain defaults in at load: nil would stay nil)
+				fixed[#fixed + 1] = k
+			end
 		end
 	end
 	local g = db.global

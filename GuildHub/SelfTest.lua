@@ -395,6 +395,9 @@ end
 -- 0.4.0: feature registry, event dispatcher, ticker, budget, guild history caps
 local function CheckFeatures()
     if not GH.features then return Skip("features", "(not loaded)") end
+    -- 0.4.0-b3: run the ignore check once first, so the map line shows the real ignore mode
+    -- (it is only set the first time the check runs); a failure is reported by the map part
+    if GH.IsIgnored and GH.MyName then pcall(GH.IsIgnored, GH, GH:MyName()) end
     local on, off = 0, 0
     for _, key in ipairs(GH.featureOrder) do
         Count()
@@ -491,9 +494,40 @@ local function CheckCard()
     if not ok then Problem("ERR", "card", Short(err)) end
 end
 
+-- 0.4.0: the Getting started card. Its rows are checked (text, state, 1-6 rows), then shown on the
+-- card as a test (nothing saved, onShow not called) unless another card is on screen; the real
+-- guide is checked as it is. The saved "shown" flag must not change.
+local GUIDE_STATES = { done = true, todo = true, off = true }
+local function CheckGuide()
+    if not (GH.GuideSpec and GH.CardFrame) then return Skip("guide", "(not loaded)") end
+    local before = GH.db.char.guideShown
+    local spec = GH:GuideSpec(true)
+    local lines = spec.lines or {}
+    if #lines < 1 or #lines > 6 then Problem("GUIDE", "lines", #lines .. " rows") end
+    for i, l in ipairs(lines) do
+        if type(l.text) ~= "string" or l.text == "" then Problem("GUIDE", "line" .. i, "no text") end
+        if not GUIDE_STATES[l.state] then Problem("GUIDE", "line" .. i, "state " .. tostring(l.state)) end
+    end
+    local f = GH.card
+    if f and f:IsShown() then
+        if f.spec and f.spec.key == "guide" then CheckGroup(GH:CardParts(true), nil) end
+    else
+        f = GH:CardFrame()
+        GH:FillCard(f, spec)
+        f:Show()
+        local ok, err = pcall(CheckGroup, GH:CardParts(true), nil)
+        f:Hide()
+        if not ok then Problem("ERR", "guide", Short(err)) end
+    end
+    if GH.db.char.guideShown ~= before then Problem("GUIDE", "saved", "self-test changed guideShown") end
+    Info(("guide shown=%s off=%s todo=%d"):format(GH.db.char.guideShown and "y" or "n",
+        GH.db.profile.guideOff and "y" or "n", GH:GuideTodo(lines)))
+end
+
 local function StepMain()
     CheckGroup(ST.MainParts(), Win())
     Guard("card", CheckCard)
+    Guard("guide", CheckGuide)
     if run.mode == "full" and GH:FeatureOn("prof") then
         -- the Professions tab (built on first show); Restore goes back to the page that was open
         run.state.prevTab = run.state.prevTab or GH.mainFrame.currentTab

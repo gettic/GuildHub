@@ -336,12 +336,16 @@ function GH:ShowWelcome(tries)
 		self:ScheduleTimer(function() GH:ShowWelcome((tries or 0) + 1) end, 5)
 		return
 	end
+	-- the Getting started card deferred from last login comes first (UI\Guide.lua, tos C2)
+	if self.GuideFirstThisLogin and self:GuideFirstThisLogin() then return end
 	for _, e in ipairs(self:Hooks("welcome")) do
 		if type(e.pending) == "function" and e.pending() and type(e.card) == "function" then
 			self:ShowCard(e.card())
-			return
+			break
 		end
 	end
+	-- then the Getting started card (once per character; skipped after a "Not now" this session)
+	if self.ShowGuide then self:ShowGuide(true) end
 end
 
 ------------------------------------------------------------------------
