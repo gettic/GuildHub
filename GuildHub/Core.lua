@@ -157,6 +157,12 @@ function GH:OnSlash(input)
 		self:TestApi() -- ApiTest.lua
 	elseif cmd == "test" and rest == "map" then
 		self:TestMap() -- UI\MapPins.lua
+	elseif cmd == "test" and rest:match("^post") and self.TestPost then
+		self:TestPost(rest:match("^post%s*(.*)$")) -- Features\Recruit.lua
+	elseif cmd == "ad" and self.PostAd then
+		self:PostAd(rest) -- Features\Recruit.lua (the recruitment macro)
+	elseif cmd == "recruit" and self.RecruitCopy then
+		self:RecruitCopy()
 	elseif cmd == "selftest" then
 		ns.SelfTest:Start(rest == "full" and "full" or "quick") -- SelfTest.lua
 	elseif cmd == "options" or cmd == "config" or cmd == "settings" then
@@ -175,6 +181,9 @@ function GH:OnSlash(input)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_TEST4)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_TESTAPI)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_TESTMAP)
+		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_RECRUIT)
+		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_AD)
+		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_TESTPOST)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_SELFTEST)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_OPTIONS)
 	end

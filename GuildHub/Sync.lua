@@ -26,6 +26,7 @@ function GH:SendHello()
 	local info = self:SelfInfo()
 	info.since = gdb.lastOnline or 0
 	self:SendMsg("HELLO", info)
+	if self.RecruitHelloSent then self:RecruitHelloSent() end -- ad posting waits for the guild's post times
 	gdb.lastOnline = U.Now()
 	-- tell the guild our status right away (if we have one)
 	if self:HasStatusToShare() then self:SendStatus() end
@@ -55,6 +56,8 @@ GH.handlers.HELLO = function(self, sender, data, distribution, isSelf)
 	if isSelf or distribution ~= "GUILD" then return end
 	self:ReadSelfInfo(sender, data)
 	self:ResendOwnFeatOff(U.ValidTime(data.since) or 0)
+	-- the recruiting text (online officers) and the last hour's ad post times (Features\Recruit.lua)
+	if self.RecruitOnHello then self:RecruitOnHello(sender, data) end
 
 	if data.inst == true then
 		self:Debug("no sync for %s (they are in an instance)", U.ShortName(sender))

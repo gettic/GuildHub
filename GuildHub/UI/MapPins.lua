@@ -376,6 +376,13 @@ local function OnActionBlocked(_, addon, func)
 	if addon ~= "GuildHub" then return end
 	if type(func) == "string" and func:find("InviteUnit", 1, true) then return end
 	local a = GH.actionBlocked
+	-- the recruiter's ad post / /ghub test post: a refused chat post is expected (no key press, or
+	-- the timer control) and gets its own result line, so it is not a taint problem. Blizzard's own
+	-- message is never hidden (tos condition 3).
+	if GH.testPosting or GH.adPending or (GH.chatPostBlockedAt and GetTime() - GH.chatPostBlockedAt < 1) then
+		a.chat = (a.chat or 0) + 1
+		return
+	end
 	a.n = a.n + 1
 	a.last = type(func) == "string" and func:sub(1, 60) or "?"
 end
@@ -407,8 +414,8 @@ function GH:MapSelfTest(api)
 	local P = Pins()
 	if not P then api.Problem("MAP", "lib", "HereBeDragons not loaded") end
 	local kind = self:DotArt()
-	api.Info(("map %s, dots %d, ignore %s, dot art %s, lib %s"):format(self:MapShareAnswer(), self:MapDotCount(),
-		tostring(self.ignoreMode or "-"), kind, P and "y" or "n"))
+	api.Info(("map %s, dots %d, ignore %s, dot art %s, lib %s, chat refused %d"):format(self:MapShareAnswer(), self:MapDotCount(),
+		tostring(self.ignoreMode or "-"), kind, P and "y" or "n", self.actionBlocked.chat or 0))
 	-- the ignore check itself must not throw
 	api.Count()
 	local ok = pcall(self.IsIgnored, self, self:MyName())

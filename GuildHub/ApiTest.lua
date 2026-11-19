@@ -317,6 +317,110 @@ Check("hbd", function()
 	local okI = GH.IsIgnored and pcall(GH.IsIgnored, GH, GH:MyName())
 	return yn(core) .. "," .. yn(pins) .. "," .. (pins and onMap or "-") .. "," .. (okI and tostring(GH.ignoreMode or "?") or "!")
 end)
+-- Guild Recruiter R1 (plans\guild-recruiter\PLAN.md sec. 7b/8): nothing here sends or acts.
+-- cf: Guild Finder on? (IsEnabled, disable reason given?, ToggleGuildFinder exists)
+Check("cf", function()
+	local ok, on = Call(C_ClubFinder and C_ClubFinder.IsEnabled)
+	local okR, why = Call(C_ClubFinder and C_ClubFinder.GetClubFinderDisableReason)
+	return (ok == true and yn(on) or ok) .. "," .. (okR == true and (why == nil and "none" or tostring(why)) or okR)
+		.. "," .. Exists(ToggleGuildFinder)
+end)
+-- ratl: role atlases found of 3, class atlases found of 9, CLASS_ICON_TCOORDS there (fallback)
+Check("ratl", function()
+	local W = ns.Widgets
+	local roles, classes = 0, 0
+	for _, a in pairs(W.ART.roles.atlas) do if W.HasAtlas(a) then roles = roles + 1 end end
+	for _, c in ipairs(GH.RECRUIT_CLASSES or {}) do if W.HasAtlas(W.ART.classes.atlasPrefix .. c:lower()) then classes = classes + 1 end end
+	return roles .. "/3," .. classes .. "/9," .. yn(type(CLASS_ICON_TCOORDS) == "table")
+end)
+-- tabard: the function exists and runs on three test textures (nothing is shown)
+local tabardFrame
+Check("tabard", function()
+	if type(SetLargeGuildTabardTextures) ~= "function" then return "-" end
+	tabardFrame = tabardFrame or CreateFrame("Frame")
+	local t1, t2, t3 = tabardFrame:CreateTexture(), tabardFrame:CreateTexture(), tabardFrame:CreateTexture()
+	local ok = pcall(SetLargeGuildTabardTextures, "player", t1, t2, t3)
+	return "y," .. (ok and "ok" or "!")
+end)
+-- ginv: may we invite (answer), C_GuildInfo.Invite exists (never called)
+Check("ginv", function()
+	local ok, v = Call(CanGuildInvite)
+	return (ok == true and yn(v) or ok) .. "," .. Has(C_GuildInfo, "Invite")
+end)
+-- menu: the name-menu and chat-filter functions the next betas need
+Check("menu", function()
+	return Has(Menu, "ModifyMenu") .. "," .. Has(ChatFrameUtil, "AddMessageEventFilter")
+end)
+-- adapi: C_ChatInfo.SendChatMessage exists (never called here), chat lockdown now
+Check("adapi", function()
+	local ok, lock = Call(C_ChatInfo and C_ChatInfo.InChatMessagingLockdown)
+	return Has(C_ChatInfo, "SendChatMessage") .. "," .. (ok == true and yn(lock) or ok)
+end)
+-- adch: the game's world channels you are in, "number:name" (custom channels only counted, no names)
+local WORLD = { "general", "trade", "lookingforgroup", "guildrecruitment", "localdefense", "worlddefense", "services" }
+Check("adch", function()
+	if type(GetChannelName) ~= "function" then return "-" end
+	local parts, other = {}, 0
+	for i = 1, 20 do
+		local ok, id, name = Call(GetChannelName, i)
+		if ok == "s" then parts[#parts + 1] = i .. ":s"
+		elseif ok == true and type(id) == "number" and id > 0 and type(name) == "string" then
+			local low = name:lower():gsub("%s", "")
+			local world = false
+			for _, w in ipairs(WORLD) do if low:sub(1, #w) == w then world = true break end end
+			if world then parts[#parts + 1] = id .. ":" .. (U.CleanText(name, 40) or "?"):gsub("[ ,=]", "_")
+			else other = other + 1 end
+		end
+	end
+	return (#parts > 0 and table.concat(parts, ";") or "0") .. ",+" .. other
+end)
+-- mac: macro functions, used/max character macros, the 6 icon files found
+Check("mac", function()
+	local fns = Exists(CreateMacro) .. Exists(EditMacro) .. Exists(PickupMacro)
+	local used, max = "?", "?"
+	if GH.MacroSlots then
+		local okS, u, m = pcall(GH.MacroSlots, GH)
+		if okS and u then used, max = tostring(u), tostring(m) end
+	end
+	local acct = Constants and Constants.MacroConsts and Constants.MacroConsts.MAX_ACCOUNT_MACROS
+	local icons = 0
+	for _, n in ipairs(GH.RECRUIT_ICONS or {}) do
+		local ok, id = Call(GetFileIDFromPath, "Interface\\Icons\\" .. n)
+		if ok == true and type(id) == "number" and id > 0 then icons = icons + 1 end
+	end
+	return fns .. "," .. used .. "/" .. max .. "," .. tostring(acct or "?") .. "," .. icons .. "/" .. #(GH.RECRUIT_ICONS or {})
+end)
+-- rmcm: the restriction flags Forever's own API docs give C_ChatInfo.SendChatMessage (the docs
+-- addon is loaded on demand, out of combat; nothing is called). HR = HasRestrictions,
+-- RMCM = RestrictedForMacroChatMessages, AWU = AllowedWhenUntainted
+Check("rmcm", function(state)
+	if state.rmcm then return state.rmcm end
+	if InCombatLockdown() or not (C_AddOns and type(C_AddOns.LoadAddOn) == "function") then return "-" end
+	local okL = pcall(C_AddOns.LoadAddOn, "Blizzard_APIDocumentationGenerated")
+	local doc = _G.APIDocumentation
+	if not okL or type(doc) ~= "table" or type(doc.systems) ~= "table" then return "n" end
+	for _, sys in ipairs(doc.systems) do
+		if type(sys) == "table" and sys.Namespace == "C_ChatInfo" then
+			for _, fn in ipairs(sys.Functions or {}) do
+				if type(fn) == "table" and fn.Name == "SendChatMessage" then
+					local f = {}
+					if fn.HasRestrictions then f[#f + 1] = "HR" end
+					if fn.RestrictedForMacroChatMessages then f[#f + 1] = "RMCM" end
+					if fn.SecretArguments == "AllowedWhenUntainted" then f[#f + 1] = "AWU" end
+					state.rmcm = "y:" .. (#f > 0 and table.concat(f, ".") or "none")
+					return state.rmcm
+				end
+			end
+			return "y:nofn"
+		end
+	end
+	return "y:nosys"
+end)
+-- tpost: the last /ghub test post result (key:sent,echo:y = the macro key press works)
+Check("tpost", function()
+	local c = GH.db and GH.db.global and GH.db.global.recruitCaps
+	return type(c) == "table" and type(c.testPost) == "string" and c.testPost:gsub("^post=", "") or "-"
+end)
 GH.API_CHECKS = checks
 
 -- Guild calendar events in the next 14 days (after OpenCalendar has loaded the data).

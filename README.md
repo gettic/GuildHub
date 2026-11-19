@@ -29,6 +29,7 @@ On Trial and Veteran accounts the card only says that sharing is locked and that
 - A "crafted by" line in item tooltips.
 - Guild map dots: guildmates who share their position show on the world map and the minimap.
 - A Getting started card with a short checklist.
+- A Guild Recruiter (beta): what the guild needs, the guild makeup and a recruitment text to copy or post.
 
 Planned next: a Map tab in the window. It is not built yet.
 
@@ -72,6 +73,33 @@ Guildmates who share their position show as class-coloured dots on the world map
 
 The Guild map section in Settings has a switch for the minimap dots. `/ghub test map` shows three made-up guildmates for 60 seconds, only on your screen.
 
+## Guild Recruiter
+
+This part is in beta. Open the Members tab in the `/ghub` window, then the Recruiting page. Everyone sees:
+
+- **We need:** how many tanks, healers and damage the guild wants, and which classes are wanted or closed.
+- **Guild makeup:** per class, how many members are level 60 and level 50+ (from the guild list).
+- **Recruitment text:** the guild's short ad, written by the officers.
+
+**What officers set.** Officers set the needs (they last 14 days), the recruitment text and a Discord invite, then press "Share with guild". The text has at most 200 letters (accented letters count as one letter each), and it must fit in one chat line. Links, web addresses and words like Blizzard, GM, Official, gold or boost are not allowed. The Discord invite (discord.gg/... or discord.com/invite/...) only shows in the Copy box. Officers also tick "Let members post the ad".
+
+**Copy and share.** Copy (or `/ghub recruit`) opens the text to copy, for Discord or forums. "Share in guild chat" puts the text in your guild chat box once every 30 minutes; you press Enter. "Guild Finder" opens the game's own Guild Finder.
+
+**Posting the ad.** "Make macro" makes a character macro, "GH Recruit", that runs `/ghub ad trade` or `/ghub ad general`. Drag it to your bar and press it to post the text as you. "Make Copy macro" makes "GH Ad Copy" for `/ghub recruit`. Posting has firm limits:
+
+- off until an officer ticks "Let members post the ad"
+- General and Trade only
+- 1 post per player per hour (a failed try counts too)
+- 2 posts per hour for the whole guild
+- 20 minutes between posts in the same channel (for General: in the same zone)
+- never in combat, dungeons, raids or battlegrounds
+
+The first press only shows a short note: "Posts as you. Follow channel rules; spamming can be reported." The next press posts.
+
+For about 20 seconds after login (or after leaving a dungeon) the ad says "checking the guild's recent posts" while it learns when the guild last posted. Try again after that. If the game is slow to show your post, you see "couldn't confirm the post". It still counts for the hourly limits.
+
+**New members.** When someone joins, a small note shows "Name joined the guild", with who invited them if the game's log says. "Say welcome" puts a welcome line in your guild chat box; you press Enter. Turn the note off in Settings ("Show a note when someone joins the guild"). A new member with Guild Hub gets a welcome card once, within two days of joining (this needs "Keep guild history on this computer").
+
 ## Fair trade
 
 What you don't share, you can't see from others either:
@@ -97,13 +125,16 @@ Copy the `GuildHub` folder into your WoW `AddOns` folder, then restart the game 
 | `/ghub status` | Show who has Guild Hub and which version (beta testers too), the guild history counts, and how many addon messages you sent in the last 10 minutes |
 | `/ghub options` | Open Settings |
 | `/ghub start` | Open the Getting started card |
-| `/ghub selftest` | Check the window and saved data; shows one line to copy and send to the author (no names in it). `/ghub selftest full` also checks the Professions tab |
+| `/ghub recruit` | Show the guild's recruitment text to copy |
+| `/ghub ad trade` / `/ghub ad general` | Post the recruitment text (for the ad macro; see [Guild Recruiter](#guild-recruiter)) |
+| `/ghub selftest` | Check the window and saved data; shows one line to copy and send to the author (no names in it). `/ghub selftest full` also checks the Professions and Members tabs |
 | `/ghub debug` | Show addon messages |
 | `/ghub test big` | Run a test of splitting a long message |
 | `/ghub test activity` | Show what Guild Hub thinks you are doing |
 | `/ghub test expire` | Make your status run out |
 | `/ghub test ui` | Show which Blizzard art your game gave the window (and a second line to copy) |
-| `/ghub test api` | Check which game functions this client has; shows one line to copy. Changes and sends nothing |
+| `/ghub test api` | Check which game functions this client has (also chat channels, macros and the last test post); shows one line to copy. Changes and sends nothing |
+| `/ghub test post` | Check that the ad macro can post: makes a "GH Test Post" macro and shows the steps. It posts only in your own private "ghtest" channel. `/ghub test post remove` deletes the macro |
 | `/ghub test map` | Show three made-up guildmates on the map for 60 seconds (only on your screen) |
 | `/ghub test prof` | Show what Guild Hub knows about your own professions |
 
@@ -113,7 +144,7 @@ Click the gear button in the title bar of the `/ghub` window (left of the "-"), 
 
 **What I share.** This is at the top of Settings. It has one line each for your position, your professions and your group size. Each line says "off = you also can't see others'" (see Fair trade). Trial and Veteran accounts can't share, so these lines are locked for them.
 
-**Features.** The Features section lets you switch Professions and the Guild map on or off for yourself, and turn "Keep guild history on this computer" on or off (on by default). Officers can also switch a part off for the whole guild. They can only switch things off, never on, and the switch stops counting if they lose their officer rank.
+**Features.** The Features section lets you switch Professions, the Guild map and the Guild Recruiter on or off for yourself, and turn "Keep guild history on this computer" on or off (on by default). Officers can also switch a part off for the whole guild. They can only switch things off, never on, and the switch stops counting if they lose their officer rank.
 
 **Guild history.** With "Keep guild history on this computer" on, Guild Hub saves these on your computer only. Nothing is sent to anyone:
 
@@ -157,13 +188,15 @@ The addon lives in `GuildHub\`. Files are loaded in this order (see `GuildHub_Fo
 | `Professions.lua` | Professions: reading recipes, sharing them, search, tooltip line |
 | `Features\Recorders.lua` | Guild history kept on this computer |
 | `Features\Map.lua` | Guild map: sharing and receiving positions |
+| `Features\Recruit.lua` | Guild Recruiter: needs, text, ad posting and limits, macros, join notes |
 | `UI\Widgets.lua` | Buttons, text boxes and the alert note |
-| `UI\MainFrame.lua` | The window, the Status tab, the gear button and the minimap button |
+| `UI\MainFrame.lua` | The window, its tabs, the gear button and the minimap button |
 | `UI\StatusTab.lua` | The status board tab |
 | `UI\ProfessionsTab.lua` | The Professions tab |
 | `UI\MiniFrame.lua` | The small mini mode window |
 | `UI\Card.lua` | The small card ("Share my position", Getting started) |
 | `UI\Guide.lua` | The Getting started checklist |
+| `UI\RecruitPage.lua` | The Members tab's Recruiting page, the Copy box and the join note |
 | `UI\MapPins.lua` | Dots on the world map and minimap |
 | `Options.lua` | Settings (the Settings page in the window and the Options page) |
 | `ApiTest.lua` | The `/ghub test api` check |

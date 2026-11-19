@@ -299,7 +299,8 @@ function ST.MainParts()
         { name = "mini", obj = f.miniButton, top = true, titleBar = true },
         { name = "settings", obj = f.gearButton, top = true, titleBar = true, art = f.gearButton and f.gearButton.icon and { "icon" } or nil },
         { name = "tab.status", obj = tabs.status },
-        { name = "tab.prof", obj = tabs.professions },
+        { name = "tab.prof", obj = tabs.professions, opt = not GH:FeatureOn("prof"), shownOnly = not GH:FeatureOn("prof") },
+        { name = "tab.members", obj = tabs.members, opt = not GH:FeatureOn("recruit"), shownOnly = not GH:FeatureOn("recruit") },
         { name = "status.search", obj = t.search },
         { name = "status.sort", obj = t.sort },
         { name = "status.lfgOnly", obj = t.compact },
@@ -328,6 +329,35 @@ function ST.ProfParts()
         { name = "prof.footer", obj = t.footer },
         { name = "prof.popup", obj = t.popup, opt = true, shownOnly = true },
     }
+end
+
+-- Guild Recruiter R1: the Members tab's Recruiting page (officer controls only for officers)
+function ST.RecruitParts()
+    local t = GH.recruitTab or {}
+    local officer = IsInGuild() and GH:IsOfficer(GH:MyName())
+    local parts = {
+        { name = "rec.side", obj = t.side },
+        { name = "rec.area", obj = t.area },
+        { name = "rec.needTitle", obj = t.needTitle },
+        { name = "rec.class1", obj = t.classes and t.classes.WARRIOR, art = { "icon" } },
+        { name = "rec.makeup", obj = t.rows and t.rows.WARRIOR and t.rows.WARRIOR.name },
+        { name = "rec.text", obj = t.textBg },
+        { name = "rec.copy", obj = t.copy },
+        { name = "rec.guildShare", obj = t.guildShare },
+        { name = "rec.channel", obj = t.channel },
+        { name = "rec.make", obj = t.make },
+        { name = "rec.makeCopy", obj = t.makeCopy },
+        { name = "rec.drag", obj = t.drag, art = { "icon" } },
+        { name = "rec.status", obj = t.status },
+        { name = "rec.finder", obj = t.finder, opt = true, shownOnly = true },
+    }
+    if officer then
+        parts[#parts + 1] = { name = "rec.share", obj = t.share }
+        parts[#parts + 1] = { name = "rec.postTick", obj = t.postTick }
+        parts[#parts + 1] = { name = "rec.dcBox", obj = t.dcBox }
+        parts[#parts + 1] = { name = "rec.plusT", obj = t.roles and t.roles.t and t.roles.t.plus }
+    end
+    return parts
 end
 
 -- ---------------------------------------------------------------------------
@@ -474,9 +504,24 @@ local function Later(frames, fn)
     C_Timer.After(0, Tick)
 end
 
+local function StepMembers()
+    CheckGroup(ST.RecruitParts(), Win())
+    Finish()
+end
+
+-- full mode: the Members tab after Professions (only when the recruiter is on and we're in a guild)
+local function NextMembers()
+    if run.mode == "full" and GH:FeatureOn("recruit") and IsInGuild() and GH.mainFrame.tabs.members then
+        run.state.prevTab = run.state.prevTab or GH.mainFrame.currentTab
+        GH:ShowTab("members")
+        return Later(2, StepMembers)
+    end
+    Finish()
+end
+
 local function StepProf()
     CheckGroup(ST.ProfParts(), Win())
-    Finish()
+    NextMembers()
 end
 
 -- 0.4.0-b2: the card that asks. A real card on screen is checked as it is; else a test card with
@@ -534,7 +579,7 @@ local function StepMain()
         GH:ShowTab("professions")
         return Later(2, StepProf)
     end
-    Finish()
+    NextMembers()
 end
 
 -- ---------------------------------------------------------------------------

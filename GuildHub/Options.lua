@@ -77,6 +77,15 @@ local function AddFeatureOptions(args)
 		func = function() GH:ClearRecorders() end,
 		hidden = function() return not IsInGuild() or not GH.ClearRecorders end,
 	}
+	-- Guild Recruiter: the join note
+	args.recruitToasts = {
+		type = "toggle", order = 19.85, width = "full",
+		name = L.OPT_RECRUIT_TOASTS, desc = L.OPT_RECRUIT_TOASTS_DESC,
+		get = function() return GH.db.profile.recruitToasts ~= false end,
+		set = function(_, v) GH.db.profile.recruitToasts = v and true or false end,
+		disabled = function() return not GH:FeatureOn("recruit") end,
+		hidden = function() return not GH.features.recruit end,
+	}
 end
 
 -- Features.lua calls this (through OnFeaturesChanged) so open settings show the new state.

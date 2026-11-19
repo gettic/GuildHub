@@ -292,7 +292,7 @@ function GH:BuildStatusTab(parent)
 	-- top bar: search, sort, "LFG only"
 	local search = W.EditBox(parent, 330, 22, 40, L.SEARCH_HINT, "search")
 	-- the toolbar sits in the tab row, right of the last tab (MainFrame `f.lastTab`)
-	local lastTab = self.mainFrame and self.mainFrame.lastTab
+	local lastTab = self.mainFrame and (self.mainFrame.tabEnd or self.mainFrame.lastTab)
 	if lastTab then
 		search:SetPoint("BOTTOMLEFT", lastTab, "BOTTOMRIGHT", 24, 4)
 	else

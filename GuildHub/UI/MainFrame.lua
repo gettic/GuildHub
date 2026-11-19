@@ -11,12 +11,14 @@ local PAGE_TOP = -56 -- the pages (and their insets) start here
 local PAGES = {
 	{ key = "status", sub = "WIN_SUB" },
 	{ key = "professions", sub = "WIN_SUB_PROF" },
+	{ key = "members", sub = "WIN_SUB_MEMBERS" },
 	{ key = "settings", sub = "WIN_SUB_SETTINGS" },
 }
 -- tabs (label = Locale key), left to right from the left edge; Map ... comes later
 local TABS = {
 	{ key = "status", label = "TAB_STATUS" },
 	{ key = "professions", label = "TAB_PROF" },
+	{ key = "members", label = "TAB_MEMBERS" }, -- Guild Recruiter R1: the Members tab (side list: Recruiting)
 }
 
 function GH:SaveWindowPos()
@@ -86,9 +88,18 @@ local function MakeTabs(f)
 	end
 	f.tabTemplate = useTpl and f.Tabs[1] and not f.Tabs[1].plain or false
 	if f.tabTemplate then pcall(PanelTemplates_SetNumTabs, f, #TABS) end
-	-- our own anchors (after SetNumTabs, which chains every tab to the one before it)
+	f.lastTab = f.Tabs[#TABS]
+	-- the end of the visible tabs: the Status page's search box starts right of it
+	f.tabEnd = CreateFrame("Frame", nil, f)
+	f.tabEnd:SetSize(4, 20) -- empty, no art: only an anchor
+	GH:AnchorTabs(f)
+end
+
+-- Our own anchors (after SetNumTabs, which chains every tab to the one before it). Each tab sits
+-- right of the last SHOWN one, so a hidden tab (a switched-off feature) leaves no gap.
+function GH:AnchorTabs(f)
 	local prev
-	for i, t in ipairs(TABS) do
+	for i in ipairs(TABS) do
 		local b = f.Tabs[i]
 		b:ClearAllPoints()
 		if prev then
@@ -96,9 +107,12 @@ local function MakeTabs(f)
 		else
 			b:SetPoint("BOTTOMLEFT", f, "TOPLEFT", 14, f.tabTemplate and TAB_LINE or TAB_LINE + 4)
 		end
-		prev = b
+		if b:IsShown() or not prev then prev = b end
 	end
-	f.lastTab = prev -- the Status page's search box starts right of it
+	if f.tabEnd then
+		f.tabEnd:ClearAllPoints()
+		f.tabEnd:SetPoint("BOTTOMLEFT", prev, "BOTTOMRIGHT", 0, 0)
+	end
 end
 
 -- Settings gear in the title bar, left of the "-" button (from the right: X, -, gear).
@@ -216,8 +230,9 @@ function GH:CreateMainFrame()
 	return f
 end
 
--- Tabs of switched-off features are hidden (Professions is the last tab, so nothing moves).
-local TAB_FEATURE = { professions = "prof" }
+-- Tabs of switched-off features are hidden; the tabs right of them move left (AnchorTabs).
+-- Members has only the Recruiting page for now, so it follows the recruiter feature.
+local TAB_FEATURE = { professions = "prof", members = "recruit" }
 function GH:UpdateFeatureTabs()
 	local f = self.mainFrame
 	if not f then return end
@@ -226,6 +241,7 @@ function GH:UpdateFeatureTabs()
 		if f.tabs[key] then f.tabs[key]:SetShown(on) end
 		if not on and f.currentTab == key then self:ShowTab("status") end
 	end
+	self:AnchorTabs(f)
 end
 
 -- Features.lua: a feature was switched on or off.
@@ -263,6 +279,8 @@ function GH:ShowTab(key)
 		self:ShowSettingsTab(f.pages.settings) -- Options.lua
 	elseif key == "professions" then
 		self:ShowProfessionsTab(f.pages.professions) -- UI\ProfessionsTab.lua (built on first show)
+	elseif key == "members" then
+		self:ShowMembersTab(f.pages.members) -- UI\RecruitPage.lua (built on first show)
 	elseif f:IsShown() then
 		self:RefreshBoard(true)
 	end

@@ -284,6 +284,129 @@ function W.SetGuideIcon(tex, mark, state)
 	return kind
 end
 
+------------------------------------------------------------------------
+-- Guild Recruiter art (UI\RecruitPage.lua): role and class icons, wanted/closed marks, bars, macro
+-- icons. Each: Blizzard atlas first (only if the game has it), then a game file, then a text mark.
+------------------------------------------------------------------------
+W.ART.roles = {
+	atlas = { t = "roleicon-tiny-tank", h = "roleicon-tiny-healer", d = "roleicon-tiny-dps" },
+	file = "Interface\\LFGFrame\\UI-LFG-ICON-ROLES",
+	coords = { t = { 0, 19 / 64, 22 / 64, 41 / 64 }, h = { 20 / 64, 39 / 64, 1 / 64, 20 / 64 }, d = { 20 / 64, 39 / 64, 22 / 64, 41 / 64 } },
+	text = { t = "T", h = "H", d = "D" },
+}
+W.ART.classes = { atlasPrefix = "classicon-", file = "Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES" }
+W.ART.wanted = {
+	[1] = { atlas = "common-icon-checkmark", file = "Interface\\RaidFrame\\ReadyCheck-Ready", text = "+" },
+	[2] = { atlas = "common-icon-redx", file = "Interface\\RaidFrame\\ReadyCheck-NotReady", text = "x" },
+}
+W.ART.bar = "Interface\\TargetingFrame\\UI-StatusBar"
+W.ART.macroFrame = { atlas = "UI-HUD-ActionBar-IconFrame", file = "Interface\\Buttons\\UI-Quickslot2" }
+W.ART.iconPath = "Interface\\Icons\\"
+
+-- Role icon on a texture (+ text mark fallback). Returns the kind used.
+function W.SetRoleIcon(tex, mark, role)
+	local a = W.ART.roles
+	local atlas = a.atlas[role]
+	local kind = "text"
+	if atlas and W.HasAtlas(atlas) then
+		tex:SetAtlas(atlas); tex:SetTexCoord(0, 1, 0, 1); kind = "atlas"
+	elseif HasFile(a.file) and a.coords[role] then
+		local c = a.coords[role]
+		local fn = GetTexCoordsForRoleSmallCircle
+		local okC, l, r, t, b = false, nil, nil, nil, nil
+		if type(fn) == "function" then okC, l, r, t, b = pcall(fn, ({ t = "TANK", h = "HEALER", d = "DAMAGER" })[role]) end
+		tex:SetTexture(a.file)
+		if okC and type(l) == "number" then tex:SetTexCoord(l, r, t, b) else tex:SetTexCoord(c[1], c[2], c[3], c[4]) end
+		kind = "file"
+	end
+	tex:SetShown(kind ~= "text")
+	if mark then
+		mark:SetShown(kind == "text")
+		mark:SetText(a.text[role] or "?")
+	end
+	return kind
+end
+
+-- Class icon on a texture (atlas classicon-<class>, else the character-create sheet + CLASS_ICON_TCOORDS).
+function W.SetClassIcon(tex, class)
+	local a = W.ART.classes
+	local atlas = a.atlasPrefix .. tostring(class):lower()
+	if W.HasAtlas(atlas) then
+		tex:SetAtlas(atlas); tex:SetTexCoord(0, 1, 0, 1)
+		return "atlas"
+	end
+	local c = type(CLASS_ICON_TCOORDS) == "table" and CLASS_ICON_TCOORDS[class]
+	if c and HasFile(a.file) then
+		tex:SetTexture(a.file); tex:SetTexCoord(c[1], c[2], c[3], c[4])
+		return "file"
+	end
+	tex:SetColorTexture(0.3, 0.3, 0.3, 1)
+	return "color"
+end
+
+-- Wanted (1) / closed (2) mark on a texture + text fallback; 0 / nil hides both.
+function W.SetMarkIcon(tex, mark, state)
+	local a = W.ART.wanted[state]
+	if not a then
+		tex:Hide(); if mark then mark:Hide() end
+		return "none"
+	end
+	local kind = "text"
+	if W.HasAtlas(a.atlas) then tex:SetAtlas(a.atlas); kind = "atlas"
+	elseif HasFile(a.file) then tex:SetTexture(a.file); kind = "file" end
+	tex:SetShown(kind ~= "text")
+	if mark then
+		mark:SetShown(kind == "text")
+		mark:SetText(a.text)
+	end
+	return kind
+end
+
+-- A plain icon texture from Interface\Icons (the "?" icon when the file is missing).
+function W.IconPath(name)
+	local path = W.ART.iconPath .. tostring(name)
+	if HasFile(path) then return path end
+	return W.ART.iconPath .. "INV_Misc_QuestionMark"
+end
+
+-- The side list of a tab (Members: Recruiting; more pages come later). items = { { key, label } }.
+-- Returns the inset; inset.buttons[key]; inset:Select(key) lights one.
+function W.SideList(parent, items, onPick)
+	local inset = W.Inset(parent)
+	inset.buttons = {}
+	local y = -8
+	for _, it in ipairs(items) do
+		local b = CreateFrame("Button", nil, inset)
+		b:SetHeight(22)
+		b:SetPoint("TOPLEFT", 6, y)
+		b:SetPoint("TOPRIGHT", -6, y)
+		local hl = W.RowHighlight(b)
+		hl:SetAlpha(0.7)
+		local sel = b:CreateTexture(nil, "BACKGROUND")
+		sel:SetAllPoints()
+		sel:SetTexture(W.ART.rowHighlight)
+		sel:SetBlendMode("ADD")
+		sel:Hide()
+		b.sel = sel
+		local fs = W.Text(b, "GameFontNormal", it.label)
+		fs:SetPoint("LEFT", 8, 0)
+		fs:SetPoint("RIGHT", -4, 0)
+		b.label = fs
+		b:SetScript("OnClick", function() inset:Select(it.key); if onPick then onPick(it.key) end end)
+		inset.buttons[it.key] = b
+		y = y - 24
+	end
+	function inset:Select(key)
+		for k, b in pairs(self.buttons) do
+			b.sel:SetShown(k == key)
+			local c = k == key and W.COLOR.highlight or W.COLOR.normal
+			b.label:SetTextColor(c[1], c[2], c[3])
+		end
+		self.selected = key
+	end
+	return inset
+end
+
 local function GearButton(parent, size)
 	local kind, art = W.GearArt()
 	if kind == "text" then
