@@ -81,7 +81,7 @@ The Guild map section in Settings has a switch for the minimap dots. `/ghub test
 
 ## Guild Recruiter
 
-This part is in beta. Open the Recruiting tab in the `/ghub` window. The list on the left has Overview for everyone. Officers also see Officer lists and Suggestions & trials.
+This part is in beta. Open the Recruiting tab in the `/ghub` window. The list on the left has Overview and New members for everyone. Officers also see Ad builder, Officer lists and Suggestions & trials.
 
 **Overview.** Everyone sees:
 
@@ -106,7 +106,9 @@ For about 20 seconds after login (or after leaving a dungeon) you see "checking 
 
 **Post button (optional).** "Make post button" makes a character macro, "GH Recruit", that runs `/ghub ad general` or `/ghub ad trade` (General by default). Drag it to your bar and press it to post. It has the same limits. It is hidden while posting is off.
 
-**Discord and forums.** Copy (or `/ghub recruit`) shows the ad and the Discord invite to copy. "Guild Finder" opens the game's own Guild Finder.
+**Ad builder** (officers only). Pick the raid size, raid days, start time, time zone, loot, style and level from fixed lists. Guild Hub builds the one-line ad from them. If it is too long for one chat line, it leaves out the style, then the raid size, then the classes. "Use this" puts the ad in the Overview text box (your text there is replaced; Revert brings back the saved one). "Save for the guild" shares the fields. Nothing is posted by itself. Under the ad text on the Overview page, officers see a hint when the ad has no raid days, start time or loot.
+
+**Discord and forums.** Copy (or `/ghub recruit`) shows the ad and the Discord invite to copy. Below them it also shows a longer post for Discord or a forum: guild, needs, raid days and time, loot, style and the Discord invite. No member names are in it. "Guild Finder" opens the game's own Guild Finder.
 
 **Suggest to officers.** Right-click a player outside the guild and pick "Suggest to officers". You can also pick up to 4 players from your own group under "Suggest from your group" on the Overview page. Only the name and a class/role tag go to one online officer with Guild Hub. You can suggest 3 players a day, and the same player once a week. Not in combat or instances.
 
@@ -124,7 +126,9 @@ For about 20 seconds after login (or after leaving a dungeon) you see "checking 
 
 **Marking players who want a guild.** The setting "Mark chat lines from players looking for a guild" is off by default. When on, it puts a small [wants a guild] tag in front of channel lines (General, Trade...) that ask for a guild. It saves and sends nothing.
 
-**New members.** When someone joins, a small note shows "Name joined the guild", with who invited them if the game's log says. "Say welcome" puts a welcome line in your guild chat box; you press Enter. Turn the note off in Settings ("Show a note when someone joins the guild"). A new member with Guild Hub gets a welcome card once, within two days of joining (this needs "Keep guild history on this computer").
+**New members.** When someone joins, a small note shows "Name joined the guild", with who invited them if the game's log says. "Say welcome" puts a welcome line in your guild chat box; you press Enter. Turn the note off in Settings ("Show a note when someone joins the guild"). Officers also get a "Pick a buddy" button on that note. A new member with Guild Hub gets a welcome card once, within two days of joining (this needs "Keep guild history on this computer"); it names their buddy.
+
+**New members page (buddies).** Everyone can tick "I'll be a buddy for new members" (it lasts 90 days; click again to stop). A buddy sees the new guildmates they were asked to help, and when each was last online. Officers see everyone who joined in the last 14 days with when they were last online. Those not online for 4 days or more ("gone quiet") come first. Officers pick a buddy for each with one click. A pairing ends after 14 days. Only the two of them and officers see it. These are reminders only: no scores, and the "gone quiet" list is worked out on your computer and not sent.
 
 ## Fair trade
 
@@ -159,7 +163,7 @@ Copy the `GuildHub` folder into your WoW `AddOns` folder, then restart the game 
 | `/ghub test activity` | Show what Guild Hub thinks you are doing |
 | `/ghub test expire` | Make your status run out |
 | `/ghub test ui` | Show which Blizzard art your game gave the window (and a second line to copy) |
-| `/ghub test api` | Check which game functions this client has (also chat channels, macros and the last test post); shows one line to copy. Changes and sends nothing |
+| `/ghub test api` | Check which game functions this client has (also chat channels, macros, the last test post, and how many whispers the game hides from addons in combat or instances: the "wsec=" part); shows one line to copy. Changes and sends nothing |
 | `/ghub test post` | Check that the ad macro can post: makes a "GH Test Post" macro and shows the steps. It posts only in your own private "ghtest" channel. `/ghub test post remove` deletes the macro |
 | `/ghub test map` | Show three made-up guildmates on the map for 60 seconds (only on your screen) |
 | `/ghub test prof` | Show what Guild Hub knows about your own professions |
@@ -217,6 +221,8 @@ The addon lives in `GuildHub\`. Files are loaded in this order (see `GuildHub_Fo
 | `Features\Map.lua` | Guild map: sharing and receiving positions |
 | `Features\RecruitOff.lua` | Guild Recruiter: officer lists, the name menu, Invite to guild, trials |
 | `Features\RecruitTools.lua` | Guild Recruiter: Suggest to officers, marking chat lines, guild totals |
+| `Features\RecruitAds.lua` | Guild Recruiter: the ad builder and the long post |
+| `Features\RecruitBuddy.lua` | Guild Recruiter: buddies and "gone quiet" |
 | `Features\Recruit.lua` | Guild Recruiter: needs, ad, posting and limits, post button, join notes |
 | `UI\Widgets.lua` | Buttons, text boxes and the alert note |
 | `UI\MainFrame.lua` | The window, its tabs, the gear button and the minimap button |
@@ -226,6 +232,8 @@ The addon lives in `GuildHub\`. Files are loaded in this order (see `GuildHub_Fo
 | `UI\Card.lua` | The small card ("Share my position", Getting started) |
 | `UI\Guide.lua` | The Getting started walkthrough |
 | `UI\RecruitPage.lua` | The Recruiting tab's Overview page, the Copy box and the join note |
+| `UI\RecruitAdPage.lua` | The Recruiting tab's Ad builder page |
+| `UI\RecruitBuddyPage.lua` | The Recruiting tab's New members page |
 | `UI\RecruitOffPage.lua` | The Recruiting tab's officer pages |
 | `UI\MapPins.lua` | Dots on the world map and minimap |
 | `Options.lua` | Settings (the Settings page in the window and the Options page) |

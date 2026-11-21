@@ -30,6 +30,9 @@ local SYNC_MAX = 300       -- rows in one catch-up answer
 local SYNC_CHARS = 24000   -- and at most this many characters (Comm drops > 30000)
 local INVITE_WATCH = 3     -- seconds a blocked-call event still belongs to our invite
 local ASK_DELAY = 20       -- seconds after the guild list is ready before we ask for the lists
+local AHEAD_OK = 30        -- a received time may be this far ahead (quick edits go 1 s ahead each)
+local SYNC_PAGES = 6       -- catch-up pages asked for in one session (RODQ p = 1; the answer says m = 1 when there is more)
+GH.RECRUIT_AHEAD_OK = AHEAD_OK
 
 -- R3: Suggestions (from members, RSUG) and Trials (guild members on trial: an end date and a
 -- reminder; nothing is promoted or removed by the addon)
@@ -41,10 +44,14 @@ local TRIAL_AFTER = 14             -- days an ended trial stays on the list (the
 local STATUSES = { "new", "contacted", "trial", "no", "joined" }
 local STATUS_OK = {}
 for i, s in ipairs(STATUSES) do STATUS_OK[s] = i end
-local LISTS = { p = "pros", d = "dni", g = "sug", t = "trial" }
-local LIST_MAX = { p = PROS_MAX, d = DNI_MAX, g = SUG_MAX, t = TRIAL_MAX }
+-- R6: Buddies (b): guild members who signed up themselves (RBSU, Features\RecruitBuddy.lua): name,
+-- sign-up time, by = the member. Kept on officers' computers, caught up between officers by RODS,
+-- dropped after 90 days without a new sign-up.
+local BUD_MAX, BUD_KEEP = 100, 90
+local LISTS = { p = "pros", d = "dni", g = "sug", t = "trial", b = "bud" }
+local LIST_MAX = { p = PROS_MAX, d = DNI_MAX, g = SUG_MAX, t = TRIAL_MAX, b = BUD_MAX }
 -- days a row is kept after its last change (a trial: the longest trial + the reminder days)
-local KEEP_DAYS = { p = OUTSIDER_DAYS, d = OUTSIDER_DAYS, g = OUTSIDER_DAYS, t = TRIAL_LONGEST + TRIAL_AFTER }
+local KEEP_DAYS = { p = OUTSIDER_DAYS, d = OUTSIDER_DAYS, g = OUTSIDER_DAYS, t = TRIAL_LONGEST + TRIAL_AFTER, b = BUD_KEEP }
 local CLASS_OK = {}
 for _, c in ipairs({ "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "WARLOCK", "DRUID" }) do CLASS_OK[c] = true end
 local ROLE_OK = { t = true, h = true, d = true }
@@ -54,7 +61,8 @@ local MENU_TAGS = { "MENU_UNIT_PLAYER", "MENU_UNIT_FRIEND", "MENU_UNIT_CHAT_ROST
 GH.RECRUIT_STATUSES = STATUSES
 GH.RECRUIT_OFF_CAPS = { INVITE_TARGET_DAYS = INVITE_TARGET_DAYS, INVITE_PER_HOUR = INVITE_PER_HOUR,
 	OUTSIDER_DAYS = OUTSIDER_DAYS, PROS_MAX = PROS_MAX, DNI_MAX = DNI_MAX, SYNC_MAX = SYNC_MAX,
-	SUG_MAX = SUG_MAX, TRIAL_MAX = TRIAL_MAX, TRIAL_LONGEST = TRIAL_LONGEST, TRIAL_AFTER = TRIAL_AFTER }
+	SUG_MAX = SUG_MAX, TRIAL_MAX = TRIAL_MAX, TRIAL_LONGEST = TRIAL_LONGEST, TRIAL_AFTER = TRIAL_AFTER,
+	BUD_MAX = BUD_MAX, BUD_KEEP = BUD_KEEP, AHEAD_OK = AHEAD_OK, SYNC_PAGES = SYNC_PAGES }
 GH.RECRUIT_TRIAL_DAYS = TRIAL_DAYS
 GH.RECRUIT_CLASS_OK, GH.RECRUIT_ROLE_OK = CLASS_OK, ROLE_OK
 GH.RECRUIT_MENU_TAGS = MENU_TAGS
@@ -104,6 +112,8 @@ local function CleanRow(l, n, row, cut)
 		if type(e) ~= "number" or e ~= e or e < ts or e > ts + TRIAL_LONGEST * 86400 + 120 then return nil end
 		if e < Now() - TRIAL_AFTER * 86400 then return nil end -- ended long ago
 		return { e = math.floor(e), ts = ts, by = by }
+	elseif l == "b" then
+		if by ~= n then return nil end -- R6: only a member's own sign-up
 	end
 	return { ts = ts, by = by }
 end
@@ -189,7 +199,9 @@ function GH:ApplyOffRow(off, row, own)
 	local by = U.ValidName(row.by)
 	if not ts or not by then return false end
 	local shift = 0
-	if ts > now + (own and 120 or 0) then shift = ts - now; ts = now end
+	-- beta.4 test: a quick second edit is sent 1 s ahead (Edit); a received time up to AHEAD_OK ahead
+	-- is kept as it is, so the later edit wins everywhere (old clients still clamp: no harm)
+	if ts > now + (own and 120 or AHEAD_OK) then shift = ts - now; ts = now end
 	if ts < KeepFrom(l) then return false end
 	local cut = off.cut[l] or 0
 	if row.c == true then
@@ -386,6 +398,7 @@ local function HandleOff(self, sender, data, distribution, isSelf)
 		return
 	end
 	if data.by ~= sender then self.offStats.dropped = self.offStats.dropped + 1 return end -- own rows only
+	if data.l == "b" then self.offStats.dropped = self.offStats.dropped + 1 return end -- R6: buddies sign up themselves (RBSU)
 	local off = self:RecruitOff(true)
 	if off and self:ApplyOffRow(off, data) then
 		self.offStats.roff = self.offStats.roff + 1
@@ -393,11 +406,13 @@ local function HandleOff(self, sender, data, distribution, isSelf)
 	end
 end
 
--- The rows another officer may be missing (changed after `since`), newest first, capped.
-function GH:OffSyncRows(since)
+-- The rows another officer may be missing (changed after `since`), capped; sent oldest first.
+-- Old ask (no paging): the newest rows. paged (beta.4 test fix): the OLDEST rows after `since`, and
+-- more = true when rows were left out (the asker then asks again from the last row's time).
+function GH:OffSyncRows(since, paged)
 	local off = self:RecruitOff()
 	local rows = {}
-	if not off then return rows end
+	if not off then return rows, false end
 	since = U.ValidTime(since) or 0
 	for l, key in pairs(LISTS) do
 		if (off.cut[l] or 0) > since then rows[#rows + 1] = { l = l, c = true, ts = off.cut[l], by = self:MyName() } end
@@ -410,24 +425,48 @@ function GH:OffSyncRows(since)
 	for k, ts in pairs(off.del) do
 		if ts > since then rows[#rows + 1] = { l = k:sub(1, 1), n = k:sub(3), x = true, ts = ts, by = self:MyName() } end
 	end
-	table.sort(rows, function(a, b) return a.ts > b.ts end)
+	if paged then
+		table.sort(rows, function(a, b) return a.ts < b.ts end)
+	else
+		table.sort(rows, function(a, b) return a.ts > b.ts end)
+	end
 	local out, chars = {}, 0
 	for _, r in ipairs(rows) do
 		chars = chars + 50 + #(r.n or "") + #(r.by or "") + #(r.fr or "")
 		if #out >= SYNC_MAX or chars > SYNC_CHARS then break end
 		out[#out + 1] = r
 	end
+	local more = #out < #rows
+	if paged then return out, more end
 	-- oldest first on the other side, so a later deletion wins over an earlier row
 	local rev = {}
 	for i = #out, 1, -1 do rev[#rev + 1] = out[i] end
-	return rev
+	return rev, more
 end
 
 local function HandleAsk(self, sender, data, distribution, isSelf)
 	if isSelf or distribution ~= "WHISPER" or not On() then return end
 	if not IAmOfficer() or not self:IsOfficer(sender) then self.offStats.dropped = self.offStats.dropped + 1 return end
-	local rows = self:OffSyncRows(type(data) == "table" and data.since)
-	if #rows > 0 then self:SendMsg("RODS", { r = rows }, sender) end
+	local paged = type(data) == "table" and data.p == 1
+	local rows, more = self:OffSyncRows(type(data) == "table" and data.since, paged)
+	if #rows > 0 then self:SendMsg("RODS", { r = rows, m = (paged and more) and 1 or nil }, sender) end
+end
+
+-- The next page of a catch-up: only from the ONE officer we asked, only while it says there is more,
+-- at most SYNC_PAGES asks per session (RODQ keeps its 60 s gap per officer).
+local function AskNextPage(self, sender, rows)
+	local pg = self.offPaging
+	if not pg or pg.to ~= sender or pg.n >= SYNC_PAGES then return end
+	local last = 0
+	for _, row in ipairs(rows) do
+		local ts = type(row) == "table" and U.ValidTime(row.ts)
+		if ts and ts > last then last = ts end
+	end
+	-- from the last row's second again (rows of that second may be cut; doubles change nothing)
+	local since = last - 1
+	if since <= pg.since then self.offPaging = nil return end -- no progress: stop
+	pg.since, pg.n = since, pg.n + 1
+	self:SendMsg("RODQ", { since = since, p = 1 }, sender)
 end
 
 local function HandleSync(self, sender, data, distribution, isSelf)
@@ -444,6 +483,7 @@ local function HandleSync(self, sender, data, distribution, isSelf)
 	self.offStats.rods = self.offStats.rods + 1
 	self:Debug("officer lists from %s: %d changed", U.ShortName(sender), changed)
 	if changed > 0 then self:RefreshOfficerLists() end
+	if data.m == 1 then AskNextPage(self, sender, data.r) else self.offPaging = nil end
 end
 
 -- Once per session, after the guild list: ask ONE online officer with Guild Hub (the first by
@@ -464,7 +504,9 @@ function GH:AskOfficerLists()
 		for _, r in pairs(off[key]) do since = math.max(since, r.ts) end
 	end
 	for _, ts in pairs(off.del) do since = math.max(since, ts) end
-	self:SendMsg("RODQ", { since = since > 0 and since - 60 or 0 }, list[1])
+	since = since > 0 and since - 60 or 0
+	self.offPaging = { to = list[1], since = since - 1, n = 1 } -- p = 1: the answer comes oldest first, in pages
+	self:SendMsg("RODQ", { since = since, p = 1 }, list[1])
 end
 
 -- Message gates (checked when asked and again right before the real send)
@@ -730,7 +772,7 @@ end
 
 -- Self-test part (called by the recruit feature's selftest).
 local EXPECT = { INVITE_TARGET_DAYS = 7, INVITE_PER_HOUR = 10, OUTSIDER_DAYS = 30, PROS_MAX = 150, DNI_MAX = 200, SYNC_MAX = 300,
-	SUG_MAX = 100, TRIAL_MAX = 50, TRIAL_LONGEST = 30, TRIAL_AFTER = 14 }
+	SUG_MAX = 100, TRIAL_MAX = 50, TRIAL_LONGEST = 30, TRIAL_AFTER = 14, AHEAD_OK = 30, SYNC_PAGES = 6 }
 function GH:RecruitOffSelfTest(api)
 	api.Count()
 	for k, v in pairs(EXPECT) do

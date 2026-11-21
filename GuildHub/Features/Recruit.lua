@@ -222,6 +222,8 @@ function GH:CleanRecruitPub(d)
 		local dc, dcBy, dcTs = self:CleanDiscord(d.dc), U.ValidName(d.dcBy), U.ValidTime(d.dcTs)
 		if dc and dcBy and dcTs then p.dc, p.dcBy, p.dcTs = dc, dcBy, dcTs end
 	end
+	-- R5 ad builder fields: each value must come from its fixed list (Features\RecruitAds.lua)
+	if d.f ~= nil and self.CleanAdFields then p.f = self:CleanAdFields(d.f) end
 	return p
 end
 
@@ -297,6 +299,7 @@ function GH:SaveRecruitPub(draft)
 		local x = type(draft.cls) == "table" and draft.cls[c]
 		if x == 1 or x == 2 then p.cls[c] = x end
 	end
+	if self.CleanAdFields then p.f = self:CleanAdFields(draft.f) end -- R5 ad builder fields
 	if dc then
 		if dc == cur.dc and cur.dcBy and self:IsOfficer(cur.dcBy) then
 			p.dc, p.dcBy, p.dcTs = dc, cur.dcBy, cur.dcTs
@@ -417,6 +420,7 @@ function GH:RecruitOnHello(sender, data)
 		end
 	end
 	if data.inst ~= true then self:AnswerAdPosts(sender) end
+	if self.BuddyOnHello then self:BuddyOnHello(sender) end -- R6: a pairing made while they were away
 end
 
 -- The first three sync responders whisper the last hour's post times to the asker (HELLO or RADQ).
@@ -923,6 +927,7 @@ end
 -- Roster.lua after every guild-list rebuild: names that weren't there before = joins.
 function GH:RecruitRosterCheck(roster)
 	if self.RecruitOffRosterCheck then self:RecruitOffRosterCheck() end -- officer lists: ask / wipe
+	if self.BuddyRosterCheck then self:BuddyRosterCheck(roster) end -- R6: pairs of members who left
 	local known = self.recruitKnown
 	if not known then
 		known = {}
@@ -970,10 +975,13 @@ function GH:RecruitWelcomeSpec()
 	local text = L.WELCOME_CARD_BODY
 	local ad = self:RecruitPub().ad
 	if ad then text = text .. "\n\n" .. ad end
+	local note = #officers > 0 and L.WELCOME_CARD_ASK:format(table.concat(officers, ", ")) or nil
+	local buddy = self.MyBuddy and self:MyBuddy() -- R6: the new member sees their buddy
+	if buddy then note = L.WELCOME_CARD_BUDDY:format(U.ShortName(buddy)) .. (note and (" " .. note) or "") end
 	return {
 		key = "welcome-guild", title = L.WELCOME_CARD_TITLE:format(U.CleanText(guild, 40) or L.WELCOME_GUILD),
 		text = text,
-		note = #officers > 0 and L.WELCOME_CARD_ASK:format(table.concat(officers, ", ")) or nil,
+		note = note,
 		buttons = {
 			{ label = L.WELCOME_CARD_TOUR, fn = function() if GH.ShowGuide then GH:ShowGuide() end end },
 			{ label = L.WELCOME_CARD_CLOSE },
@@ -1056,6 +1064,8 @@ local function SelfTest(api)
 		#GH:RecentAdPosts(), st.radp, st.rads, tostring(caps.testPost or "-")))
 	if GH.RecruitOffSelfTest then GH:RecruitOffSelfTest(api) end -- R2 officer lists (own info line)
 	if GH.RecruitToolsSelfTest then GH:RecruitToolsSelfTest(api) end -- R3 suggest, spotter, totals (own info line)
+	if GH.RecruitAdsSelfTest then GH:RecruitAdsSelfTest(api) end -- R5 ad builder (own info line)
+	if GH.RecruitBuddySelfTest then GH:RecruitBuddySelfTest(api) end -- R6 buddies, gone quiet (own info line)
 end
 
 local MESSAGES = {
@@ -1076,6 +1086,7 @@ GH:RegisterFeature({
 		gh:On("recruit", "ZONE_CHANGED_NEW_AREA", OnWorld)
 		if gh.RecruitOffEnable then gh:RecruitOffEnable() end
 		if gh.RecruitToolsEnable then gh:RecruitToolsEnable() end
+		if gh.RecruitBuddyEnable then gh:RecruitBuddyEnable() end
 		gh:Every("recruit", "tidy", 30, function()
 			GH:RecentAdPosts()
 			GH:RecruitWelcomeCheck()

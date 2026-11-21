@@ -61,20 +61,53 @@ end
 -- The draft an officer edits (needs, classes, post switch); text boxes hold the rest
 ------------------------------------------------------------------------
 local function CopyNeeds(p)
-	local d = { need = {}, cls = {}, post = p.post and true or false }
+	local d = { need = {}, cls = {}, post = p.post and true or false, f = {} }
 	for _, r in ipairs(GH.RECRUIT_ROLES) do d.need[r] = (type(p.need) == "table" and p.need[r]) or 0 end
 	for _, c in ipairs(GH.RECRUIT_CLASSES) do d.cls[c] = type(p.cls) == "table" and p.cls[c] or nil end
+	-- R5: the ad builder's fields (a copy; Features\RecruitAds.lua cleans them on save)
+	if type(p.f) == "table" then for k, v in pairs(p.f) do d.f[k] = v end end
 	return d
 end
 
 local function ResetDraft(t)
 	local p = GH:RecruitPub()
 	local need, cls = GH:RecruitNeeds()
-	t.draft = CopyNeeds({ need = need, cls = cls, post = p.post })
+	t.draft = CopyNeeds({ need = need, cls = cls, post = p.post, f = p.f })
 	t.draftV = p.v or 0
 	t.text:SetText(p.ad or "")
 	t.dcBox:SetText(p.dc or "")
 	t.dirty = false
+end
+
+-- Saves the whole draft (Overview and Ad builder pages share it). Officers only; nothing is posted.
+function GH:SaveRecruitDraft()
+	local t = self.recruitTab
+	if not t then return false end
+	local ok, why = self:SaveRecruitPub({ need = t.draft.need, cls = t.draft.cls, post = t.draft.post,
+		ad = t.text:GetText(), dc = t.dcBox:GetText(), f = t.draft.f })
+	if ok then
+		ResetDraft(t)
+		t.lastErr = nil
+		self:Msg(L.REC_SHARED)
+	else
+		t.lastErr = L["REC_ERR_" .. tostring(why):upper()] or L.REC_ERR_TEXT
+		self:Msg(t.lastErr)
+	end
+	self:DrawRecruitPage()
+	return ok
+end
+
+-- R5 "Use this": the built ad goes into the Overview text box (a draft change, not saved yet).
+function GH:UseBuiltAd(text)
+	local t = self.recruitTab
+	if not t or type(text) ~= "string" then return false end
+	t.text:SetText(text)
+	t.dirty = true
+	t.lastErr = nil
+	self:Msg(L.ADB_USED)
+	t.side:Select("recruit")
+	self:DrawRecruitPage()
+	return true
 end
 
 ------------------------------------------------------------------------
@@ -255,19 +288,15 @@ local function BuildText(t, area)
 	t.revert:SetScript("OnClick", function() ResetDraft(t); GH:DrawRecruitPage() end)
 	t.share = W.Button(area, L.REC_SHARE, 128, 22)
 	t.share:SetPoint("LEFT", t.revert, "RIGHT", 4, 0)
-	t.share:SetScript("OnClick", function()
-		local ok, why = GH:SaveRecruitPub({ need = t.draft.need, cls = t.draft.cls, post = t.draft.post,
-			ad = t.text:GetText(), dc = t.dcBox:GetText() })
-		if ok then
-			ResetDraft(t)
-			GH:Msg(L.REC_SHARED)
-		else
-			t.lastErr = L["REC_ERR_" .. tostring(why):upper()] or L.REC_ERR_TEXT
-			GH:Msg(t.lastErr)
-		end
-		GH:DrawRecruitPage()
-	end)
+	t.share:SetScript("OnClick", function() GH:SaveRecruitDraft() end)
 	Tip(t.share, L.REC_SHARE_TIP)
+	-- R5: what the ad is missing (own screen only; officers), on the error line's place
+	t.adHint = W.Text(area, "GameFontNormalSmall", "")
+	t.adHint:SetPoint("TOPLEFT", bg, "BOTTOMLEFT", 0, -3)
+	t.adHint:SetWidth(TEXT_W - 96)
+	t.adHint:SetWordWrap(true)
+	t.adHint:SetHeight(22)
+	t.adHint:SetJustifyV("TOP")
 end
 
 -- "Where the ad goes" (the user's rework, 2026-11-19): General / Trade first (Post buttons, the
@@ -460,7 +489,9 @@ end
 local function BuildMembers(page)
 	local t = {}
 	GH.recruitTab = t
-	t.side = W.SideList(page, { { key = "recruit", label = L.REC_SIDE_RECRUIT }, { key = "officer", label = L.REC_SIDE_OFFICER },
+	-- everyone: Overview, New members (R6); officers: Ad builder (R5), Officer lists (R2), Suggestions & trials (R3)
+	t.side = W.SideList(page, { { key = "recruit", label = L.REC_SIDE_RECRUIT }, { key = "newmem", label = L.REC_SIDE_NEWMEM },
+		{ key = "adbuild", label = L.REC_SIDE_ADBUILD }, { key = "officer", label = L.REC_SIDE_OFFICER },
 		{ key = "trials", label = L.REC_SIDE_TRIALS } },
 		function() GH:DrawRecruitPage() end)
 	t.side:SetPoint("TOPLEFT", 2, 0)
@@ -482,6 +513,9 @@ local function BuildMembers(page)
 	BuildTotals(t, body)
 	-- R2: the officers' lists (UI\RecruitOffPage.lua), a second body on the same area
 	if GH.BuildOfficerPage then GH:BuildOfficerPage(t, area) end
+	-- R5 / R6: the Ad builder (UI\RecruitAdPage.lua) and New members (UI\RecruitBuddyPage.lua)
+	if GH.BuildAdPage then GH:BuildAdPage(t, area) end
+	if GH.BuildBuddyPage then GH:BuildBuddyPage(t, area) end
 	t.lock = W.Text(area, "GameFontNormal", "", "CENTER")
 	t.lock:SetPoint("CENTER")
 	t.lock:SetWidth(500)
@@ -517,6 +551,12 @@ function GH:UpdateRecruitCounter()
 	t.textErr:SetText(err or t.lastErr or "")
 	if t.unsaved then t.unsaved:SetShown(t.dirty == true and IsOfficerMe()) end
 	t.textOk = not err
+	-- R5: hints for officers while the error line is empty (own screen only, nothing is sent)
+	if t.adHint then
+		local miss = (IsOfficerMe() and not err and not t.lastErr and self.AdHints and t.draft) and self:AdHints(t.draft.f) or {}
+		t.adHint:SetText(#miss > 0 and L.ADB_HINTS:format(table.concat(miss, ", ")) or "")
+		t.adHint:SetShown(#miss > 0)
+	end
 end
 
 local function DrawNeeds(t, officer)
@@ -700,18 +740,26 @@ function GH:DrawRecruitPage()
 	t.lock:SetText(on and "" or (IsInGuild() and L.AD_FEATURE_OFF or L.NOT_IN_GUILD))
 	local officer = IsOfficerMe()
 	-- R2: the side list's "Officer lists" only for officers
-	-- R3: and "Suggestions & trials"
-	for _, key in ipairs({ "officer", "trials" }) do
+	-- R3: and "Suggestions & trials"; R5: and "Ad builder". R6: "New members" for everyone.
+	for _, key in ipairs({ "officer", "trials", "adbuild" }) do
 		if t.side.buttons[key] then t.side.buttons[key]:SetShown(on and officer) end
 		if t.side.selected == key and not (on and officer) then t.side:Select("recruit") end
 	end
-	local offPage = on and (t.side.selected == "officer" or t.side.selected == "trials")
-	t.body:SetShown(on and not offPage)
+	if t.side.buttons.newmem then t.side.buttons.newmem:SetShown(on) end
+	local sel = t.side.selected
+	local offPage = on and (sel == "officer" or sel == "trials")
+	local adPage = on and sel == "adbuild" and t.adBody ~= nil
+	local budPage = on and sel == "newmem" and t.budBody ~= nil
+	t.body:SetShown(on and not offPage and not adPage and not budPage)
 	if t.offBody then t.offBody:SetShown(offPage) end
 	if t.off2Body and not offPage then t.off2Body:Hide() end
+	if t.adBody then t.adBody:SetShown(adPage) end
+	if t.budBody then t.budBody:SetShown(budPage) end
+	if on and officer and (t.draftV or 0) < (self:RecruitPub().v or 0) and not t.dirty then ResetDraft(t) end
 	if offPage then return self:DrawOfficerPage() end
+	if adPage then return self:DrawAdPage() end
+	if budPage then return self:DrawBuddyPage() end
 	if not on then return end
-	if officer and (t.draftV or 0) < (self:RecruitPub().v or 0) and not t.dirty then ResetDraft(t) end
 	DrawNeeds(t, officer)
 	DrawMakeup(t)
 	DrawText(t, officer)
@@ -740,7 +788,7 @@ function GH:ShowRecruitCopyBox()
 	local f = self.recruitCopyBox
 	if not f then
 		f = W.Popup("GuildHubRecruitCopy", UIParent, 0.97)
-		f:SetSize(460, 210)
+		f:SetSize(460, 400)
 		f:SetPoint("CENTER", 0, 80)
 		f:SetFrameStrata("DIALOG")
 		f:EnableMouse(true)
@@ -777,6 +825,33 @@ function GH:ShowRecruitCopyBox()
 		f.dcBy = W.Text(f, "GameFontDisableSmall", "")
 		f.dcBy:SetPoint("TOPLEFT", f.dcLabel, "BOTTOMLEFT", 0, -8)
 		f.dcBy:SetWidth(420)
+		-- R5: the long post (fields, We need, the ad, the Discord invite; no member names). Read-only.
+		f.longTitle = W.Text(f, "GameFontNormalSmall", L.COPY_LONG)
+		f.longTitle:SetPoint("TOPLEFT", 14, -184)
+		local lbg = W.Inset(f)
+		lbg:SetPoint("TOPLEFT", 12, -200)
+		lbg:SetPoint("TOPRIGHT", -12, -200)
+		lbg:SetHeight(160)
+		f.longBg = lbg
+		-- a long post can be taller than the box: the mouse wheel scrolls it
+		local sf = CreateFrame("ScrollFrame", nil, lbg)
+		sf:SetPoint("TOPLEFT", 8, -6)
+		sf:SetPoint("BOTTOMRIGHT", -8, 6)
+		sf:EnableMouseWheel(true)
+		sf:SetScript("OnMouseWheel", function(s, delta)
+			local range = s:GetVerticalScrollRange() or 0
+			s:SetVerticalScroll(math.max(0, math.min(range, (s:GetVerticalScroll() or 0) - delta * 28)))
+		end)
+		f.longScroll = sf
+		local le = CreateFrame("EditBox", nil, sf)
+		le:SetMultiLine(true)
+		le:SetAutoFocus(false)
+		le:SetFontObject("ChatFontNormal")
+		le:SetWidth(420)
+		le:SetHeight(150)
+		sf:SetScrollChild(le)
+		ReadOnly(le, function() return GH.BuildLongPost and GH:BuildLongPost() or "" end)
+		f.long = le
 		f.ok = W.Button(f, L.COPY_CLOSE, 90, 22)
 		f.ok:SetPoint("BOTTOMRIGHT", -12, 10)
 		f.ok:SetScript("OnClick", function() f:Hide() end)
@@ -787,6 +862,7 @@ function GH:ShowRecruitCopyBox()
 	f.dc:SetText(p.dc or "")
 	f.dc:SetShown(p.dc ~= nil)
 	f.dcBy:SetText(p.dc and L.COPY_DC_BY:format(U.ShortName(p.dcBy), U.Ago(U.Now() - (p.dcTs or 0))) or L.REC_DC_NONE)
+	f.long:SetText(self.BuildLongPost and self:BuildLongPost() or "")
 	f:Show()
 	f.text:SetFocus()
 	f.text:HighlightText()
@@ -819,6 +895,14 @@ function GH:ShowJoinToast(name)
 			GH:SayWelcome(t.name)
 			GH:UpdateJoinToast()
 		end)
+		-- R6 (officers): opens Recruiting > New members, where the buddy is picked (nothing sent here)
+		t.buddy = W.Button(t, L.JOIN_BUDDY, 110, 22)
+		t.buddy:SetPoint("LEFT", t.welcome, "RIGHT", 6, 0)
+		t.buddy:SetScript("OnClick", function()
+			t:Hide()
+			GH:OpenRecruitPage("newmem")
+		end)
+		W.Tooltip(t.buddy, L.JOIN_BUDDY_TIP)
 		t.close = W.TitleButton(t, "close")
 		t.close:SetPoint("TOPRIGHT", 2, 2)
 		t.close:SetScript("OnClick", function() t:Hide() end)
@@ -844,6 +928,22 @@ function GH:UpdateJoinToast()
 	local can = self:CanSayWelcome(t.name)
 	if can then t.welcome:Enable() else t.welcome:Disable() end
 	if t.welcome.SetGreyed then t.welcome:SetGreyed(not can) end
+	if t.buddy then t.buddy:SetShown(IsOfficerMe() and InCombatLockdown() ~= true) end
+end
+
+-- Opens the main window on the Recruiting tab at one side page (a click; nothing is sent).
+function GH:OpenRecruitPage(key)
+	if InCombatLockdown() then return end
+	if self.miniFrame and self.miniFrame:IsShown() then self.miniFrame:Hide() end
+	local f = self:CreateMainFrame()
+	if not (f.tabs and f.tabs.members) then return end
+	f:Show()
+	self:ShowTab("members")
+	local t = self.recruitTab
+	if t and t.side and key then
+		t.side:Select(key)
+		self:DrawRecruitPage()
+	end
 end
 
 function GH:HideJoinToast()

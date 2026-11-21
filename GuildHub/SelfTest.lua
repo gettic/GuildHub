@@ -362,6 +362,7 @@ function ST.RecruitParts()
         parts[#parts + 1] = { name = "rec.postTick", obj = t.postTick }
         parts[#parts + 1] = { name = "rec.dcBox", obj = t.dcBox }
         parts[#parts + 1] = { name = "rec.plusT", obj = t.roles and t.roles.t and t.roles.t.plus }
+        parts[#parts + 1] = { name = "rec.adHint", obj = t.adHint, opt = true, shownOnly = true } -- R5
     end
     return parts
 end
@@ -568,11 +569,75 @@ function ST.RecruitTrialParts()
     }
 end
 
-local function StepTrials()
-    CheckGroup(ST.RecruitTrialParts(), Win())
+-- Guild Recruiter R5: the "Ad builder" page (officers only)
+function ST.RecruitAdParts()
+    local t = GH.recruitTab or {}
+    local a = t.adb or {}
+    local ch = a.choices or {}
+    return {
+        { name = "rec.side.adbuild", obj = t.side and t.side.buttons and t.side.buttons.adbuild },
+        { name = "adb.title", obj = a.title },
+        { name = "adb.size1", obj = a.sizes and a.sizes[1] },
+        { name = "adb.day1", obj = a.days and a.days[1] },
+        { name = "adb.day7", obj = a.days and a.days[7] },
+        { name = "adb.at", obj = ch.at },
+        { name = "adb.tz", obj = ch.tz },
+        { name = "adb.loot", obj = ch.loot },
+        { name = "adb.style", obj = ch.style },
+        { name = "adb.lvl", obj = ch.lvl },
+        { name = "adb.built", obj = a.builtBg },
+        { name = "adb.use", obj = a.use },
+        { name = "adb.save", obj = a.save },
+        { name = "adb.long", obj = a.longBg },
+        { name = "adb.hint", obj = a.hint },
+    }
+end
+
+-- Guild Recruiter R6: the "New members" page (everyone; the officers' half only for officers)
+function ST.RecruitBuddyParts()
+    local t = GH.recruitTab or {}
+    local b = t.bud or {}
+    local officer = GH.RecruitIAmOfficer and GH.RecruitIAmOfficer()
+    local row1 = b.rows and b.rows[1]
+    local parts = {
+        { name = "rec.side.newmem", obj = t.side and t.side.buttons and t.side.buttons.newmem },
+        { name = "bud.title", obj = b.title },
+        { name = "bud.tick", obj = b.tick },
+        { name = "bud.state", obj = b.state },
+        { name = "bud.guildiesTitle", obj = b.guildiesTitle },
+    }
+    if officer then
+        parts[#parts + 1] = { name = "bud.newTitle", obj = b.newTitle }
+        parts[#parts + 1] = { name = "bud.list", obj = b.inset }
+        parts[#parts + 1] = { name = "bud.row1", obj = row1, opt = true, shownOnly = true }
+        parts[#parts + 1] = { name = "bud.pick1", obj = row1 and row1:IsShown() and row1.pick or nil, opt = true, shownOnly = true }
+        parts[#parts + 1] = { name = "bud.hint", obj = b.hint }
+    else
+        parts[#parts + 1] = { name = "bud.memberHint", obj = b.memberHint }
+    end
+    return parts
+end
+
+local function BackToOverview()
     local t = GH.recruitTab
     if t and t.side then t.side:Select("recruit"); GH:DrawRecruitPage() end
     Finish()
+end
+
+local function StepAdBuild()
+    CheckGroup(ST.RecruitAdParts(), Win())
+    BackToOverview()
+end
+
+local function StepTrials()
+    CheckGroup(ST.RecruitTrialParts(), Win())
+    local t = GH.recruitTab
+    if t and t.side and t.adBody then
+        t.side:Select("adbuild")
+        GH:DrawRecruitPage()
+        return Later(1, StepAdBuild)
+    end
+    BackToOverview()
 end
 
 local function StepOfficer()
@@ -587,9 +652,26 @@ local function StepOfficer()
     Finish()
 end
 
+-- R6: New members (everyone), then the officers' pages
+local function StepBuddy()
+    CheckGroup(ST.RecruitBuddyParts(), Win())
+    local t = GH.recruitTab
+    if GH.RecruitIAmOfficer and GH.RecruitIAmOfficer() and t and t.side and t.offBody then
+        t.side:Select("officer")
+        GH:DrawRecruitPage()
+        return Later(1, StepOfficer)
+    end
+    BackToOverview()
+end
+
 local function StepMembers()
     CheckGroup(ST.RecruitParts(), Win())
     local t = GH.recruitTab
+    if t and t.side and t.budBody then
+        t.side:Select("newmem")
+        GH:DrawRecruitPage()
+        return Later(1, StepBuddy)
+    end
     if GH.RecruitIAmOfficer and GH.RecruitIAmOfficer() and t and t.side and t.offBody then
         t.side:Select("officer")
         GH:DrawRecruitPage()

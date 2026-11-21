@@ -421,6 +421,34 @@ Check("tpost", function()
 	local c = GH.db and GH.db.global and GH.db.global.recruitCaps
 	return type(c) == "table" and type(c.testPost) == "string" and c.testPost:gsub("^post=", "") or "-"
 end)
+
+-- R7 probe (PLAN.md 11.3, tos-new-ideas.md 3 "probe before building"): are whispers readable on
+-- Forever, out of combat, in combat and in instances? A passive counter from file load: it only
+-- COUNTS CHAT_MSG_WHISPER events (no Battle.net whispers, no other events). Memory only; no name,
+-- text or GUID is kept, compared or sent. Nothing is hidden from chat (no filter).
+-- Line: wsec=N:a/b,c/d,e/f,gG  N = whispers seen this session; a/b = secret author or text / seen
+-- out of combat outside instances, c/d = the same in combat, e/f = in an instance (combat wins);
+-- G = whispers whose sender GUID was secret.
+local wsec = { n = 0, normal = { 0, 0 }, combat = { 0, 0 }, inst = { 0, 0 }, guid = 0 }
+GH.wsecStats = wsec
+local function CountWhisper(_, text, author, ...)
+	wsec.n = wsec.n + 1
+	local where = wsec.normal
+	if InCombatLockdown() then where = wsec.combat
+	else
+		local okI, inInst = pcall(IsInInstance)
+		if okI and inInst == true then where = wsec.inst end
+	end
+	where[2] = where[2] + 1
+	if Secret(text) or Secret(author) then where[1] = where[1] + 1 end
+	local guid = select(10, ...) -- arg 12 of the event
+	if Secret(guid) then wsec.guid = wsec.guid + 1 end
+end
+GH:On("wsec", "CHAT_MSG_WHISPER", CountWhisper)
+Check("wsec", function()
+	return ("%d:%d/%d,%d/%d,%d/%d,g%d"):format(wsec.n, wsec.normal[1], wsec.normal[2], wsec.combat[1], wsec.combat[2],
+		wsec.inst[1], wsec.inst[2], wsec.guid)
+end)
 GH.API_CHECKS = checks
 
 -- Guild calendar events in the next 14 days (after OpenCalendar has loaded the data).
