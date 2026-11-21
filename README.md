@@ -61,6 +61,8 @@ Click the Professions tab to see which guildmates have which profession and how 
 
 Open each of your profession windows once, so Guild Hub can read your recipes.
 
+**Your own characters.** Guild Hub remembers every character you log in with on this account. This stays on your PC and is never sent to anyone. In the recipe search, the request popup and the "crafted by" tooltip, they show in gold as "You" or "You (alt): Name". They have no Whisper or Request button ("log in to craft") and are listed after your guildmates. The status board never offers Whisper or Invite for them. Each alt is recognised after it has logged in once with this version. A character is forgotten when you haven't played it for a year, or at once if it shows up online while you are logged in (then it isn't yours).
+
 **Tooltips.** Item tooltips get one extra line, "Guild Hub: crafted by ...", when a guildmate can make the item. It never shows in combat. You can turn it off in the settings.
 
 **Privacy.** "Share my professions" in the settings is on by default. Turning it off tells the guild to forget your professions. Guild Hub only fetches recipe lists after you first use the Professions tab, the search or a tooltip, and sends them slowly to keep the chat channel free. Professions of players who leave the guild are deleted.
@@ -206,6 +208,7 @@ The addon lives in `GuildHub\`. Files are loaded in this order (see `GuildHub_Fo
 | `Budget.lua` | One shared budget for all addon messages |
 | `Store.lua` | Saved data, merging and 90-day pruning |
 | `Roster.lua` | Guild roster |
+| `Alts.lua` | Your own characters on this account (kept only on your PC) |
 | `Comm.lua` | Sending and receiving addon messages |
 | `Sync.lua` | Syncing data between guildmates |
 | `Status.lua` | Status logic: presets, activity, alerts, board rows |

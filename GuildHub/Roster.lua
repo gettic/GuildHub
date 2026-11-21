@@ -51,6 +51,7 @@ function GH:RebuildRoster()
 	end
 	self.roster = roster
 	self.rosterOnline = online
+	if self.AltRosterCheck then self:AltRosterCheck(roster) end -- own characters seen online / left (Alts.lua)
 	if self.ProfRosterCheck then self:ProfRosterCheck(roster) end -- players who left: professions deleted
 	if self.RecordRoster then self:RecordRoster(roster) end         -- guild history (Features\Recorders.lua)
 	if self.started then self:ApplyFeatures() end -- a guild switch counts only while its officer still is one

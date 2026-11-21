@@ -370,6 +370,7 @@ function GH:OnCommReceived(prefix, text, distribution, sender)
 		u.seen = GetTime()
 		self.addonUsers[sender] = u
 		self:TouchMember(sender)
+		if self.AltHeard then self:AltHeard(sender) end -- a recorded "own character" that talks isn't ours
 	end
 
 	local okCall, err = pcall(handler, self, sender, data, distribution, isSelf)

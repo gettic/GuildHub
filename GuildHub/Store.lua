@@ -152,6 +152,8 @@ function GH:RepairSaved()
 		g.guilds = {}
 		fixed[#fixed + 1] = "guilds"
 	end
+	-- own characters (Alts.lua): local only, damaged entries dropped, good ones kept
+	if GH.CleanAccountData and GH.CleanAccountData(g) then fixed[#fixed + 1] = "account" end
 	for _, name in ipairs(fixed) do
 		self:Debug("repaired saved setting %s", name)
 	end
@@ -364,6 +366,7 @@ end
 -- Pruning: members not seen for 90 days are deleted (never our own character).
 ------------------------------------------------------------------------
 function GH:Prune()
+	if self.PruneOwnChars then self:PruneOwnChars() end -- Alts.lua: own characters not played for a year
 	local gdb = self:GetGuildDB()
 	if not gdb then return end
 	local cutoff = U.Now() - self.PRUNE_DAYS * 86400

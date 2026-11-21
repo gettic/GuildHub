@@ -30,7 +30,7 @@ end
 
 -- Opens the chat box to whisper them; never sends anything by itself.
 function GH:WhisperMember(name)
-	if type(name) ~= "string" then return end
+	if type(name) ~= "string" or self:IsMyChar(name) then return end -- never yourself or your alts
 	local target = U.WhisperName(name)
 	local tell = (ChatFrameUtil and ChatFrameUtil.SendTell) or ChatFrame_SendTell
 	if not (tell and pcall(tell, target)) then
@@ -41,7 +41,7 @@ end
 -- Invites from the player's click. If the game blocks it, Guild Hub switches for good to
 -- putting "/invite Name" in the chat box (the player presses Enter).
 function GH:InviteMember(name)
-	if type(name) ~= "string" then return end
+	if type(name) ~= "string" or self:IsMyChar(name) then return end -- never yourself or your alts
 	local target = U.WhisperName(name)
 	if self.db.profile.inviteFallback or not (C_PartyInfo and C_PartyInfo.InviteUnit) then
 		OpenChatWith("/invite " .. target)
@@ -167,8 +167,9 @@ local function FillRow(r, d)
 	local isHeader = d.header ~= nil
 	r.header:SetShown(isHeader)
 	for _, k in ipairs({ "name", "rank", "lvl", "zone", "status", "time", "group" }) do r[k]:SetShown(not isHeader) end
-	r.whisper:SetShown(not isHeader and not d.isSelf)
-	r.invite:SetShown(not isHeader and not d.isSelf)
+	local mine = d.isSelf or (not isHeader and GH:IsMyChar(d.name)) -- yourself or your alt (Alts.lua)
+	r.whisper:SetShown(not isHeader and not mine)
+	r.invite:SetShown(not isHeader and not mine)
 	r.hl:SetShown(not isHeader)
 	if r.headerLine then r.headerLine:SetShown(isHeader) end
 	if isHeader then

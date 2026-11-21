@@ -68,6 +68,7 @@ function GH:OnEnable()
 	end)
 
 	self:CheckTrialAccount()
+	self:NoteOwnChar()       -- Alts.lua: this character is one of yours (local only, never sent)
 	self:InitMinimapButton() -- UI\MainFrame.lua
 	self:InitInviteWatch()   -- UI\StatusTab.lua
 	-- give the game a few seconds to load the guild before we talk
@@ -83,6 +84,7 @@ function GH:Startup()
 	self.started = true
 
 	self:MigrateOwnKey()  -- Store.lua
+	self:NoteOwnChar()    -- Alts.lua (now with the guild key)
 	self:RequestRoster()
 	self:Prune()
 	-- repeating jobs on the one ticker (Events.lua)
@@ -108,6 +110,7 @@ function GH:OnRosterReady()
 end
 
 function GH:OnGuildChanged()
+	self:NoteOwnChar() -- Alts.lua: the guild this character is in
 	if IsInGuild() and not self.started then
 		self:ScheduleTimer("Startup", 2)
 	end

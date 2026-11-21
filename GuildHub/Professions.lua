@@ -783,13 +783,24 @@ local function FilterOK(filter, line)
 	return p.key == filter
 end
 
--- Crafters of one recipe: online first, then skill.
+-- "self" (this character) / "alt" (another of your characters, Alts.lua) / nil
+function GH:MineKind(name)
+	if name == self:MyName() then return "self" end
+	if self.IsMyAlt and self:IsMyAlt(name) then return "alt" end
+	return nil
+end
+
+-- Crafters of one recipe: guildmates first (online, then skill), your own characters last.
+-- ask = an online guildmate you can send a request to (never yourself or your alts).
 function GH:Crafters(list)
 	local r = {}
 	for _, c in ipairs(list or {}) do
-		r[#r + 1] = { name = c.name, line = c.line, rank = c.rank, online = Online(c.name) }
+		local mine = self:MineKind(c.name)
+		local on = Online(c.name)
+		r[#r + 1] = { name = c.name, line = c.line, rank = c.rank, online = on, mine = mine, ask = on and not mine }
 	end
 	tsort(r, function(a, b)
+		if (a.mine ~= nil) ~= (b.mine ~= nil) then return b.mine ~= nil end
 		if a.online ~= b.online then return a.online end
 		if a.rank ~= b.rank then return a.rank > b.rank end
 		return a.name < b.name
@@ -820,6 +831,7 @@ function GH:BuildProfRows(opts)
 						table.insert(groups[line], {
 							name = name, class = m.class or (r and r.class), line = line, rank = e.r, max = e.m,
 							spec = self:SpecName(e.s), recipes = e.n or 0, online = on, isSelf = isSelf,
+							mine = self:MineKind(name),
 							lastSeen = m.lastSeen, old = e.old,
 						})
 						any = true
@@ -860,7 +872,7 @@ function GH:BuildRecipeRows(opts)
 				if FilterOK(opts.filter, c.line) and (not opts.online or c.online) then
 					keep[#keep + 1] = c
 					line = line or c.line
-					if c.online then on = on + 1 end
+					if c.ask then on = on + 1 end -- your own characters don't count
 				end
 			end
 			if #keep > 0 then
@@ -902,14 +914,27 @@ function GH:TooltipCrafters(itemName)
 		end
 	end
 	if #all == 0 then return nil end
+	-- guildmates first; your own characters (Alts.lua) at the end of the same line, never as someone to ask
+	local others, mine = {}, {}
+	for _, c in ipairs(all) do
+		if c.mine then mine[#mine + 1] = self:MineLabel(c) else others[#others + 1] = c end
+	end
+	local own = #mine > 0 and tconcat(mine, ", ") or nil
+	if #others == 0 then return own and L.TIP_ONLY_YOU:format(own) or nil end
 	local names = {}
-	for i = 1, math.min(3, #all) do
-		local c = all[i]
+	for i = 1, math.min(3, #others) do
+		local c = others[i]
 		local s = U.ShortName(c.name)
 		names[i] = c.online and ("|cff40ff40" .. s .. "|r") or s
 	end
-	local more = #all > 3 and L.TIP_MORE:format(#all - 3) or ""
-	return L.TIP_CRAFTERS:format(tconcat(names, ", ") .. more)
+	local more = #others > 3 and L.TIP_MORE:format(#others - 3) or ""
+	return L.TIP_CRAFTERS:format(tconcat(names, ", ") .. more) .. (own and L.TIP_YOURS:format(own) or "")
+end
+
+-- "this character" / "Mira (alt)" for a crafter row with c.mine set.
+function GH:MineLabel(c)
+	if c.mine == "self" then return L.ALT_THIS end
+	return L.ALT_TAG:format(U.ShortName(c.name))
 end
 
 function GH:InitProfTooltip()
@@ -949,6 +974,7 @@ end
 
 function GH:RequestCraft(recipeID, crafter)
 	if type(crafter) ~= "string" or crafter == self:MyName() then return false end
+	if self.IsMyChar and self:IsMyChar(crafter) then return false end -- never whisper your own alt
 	if not self:IsOnline(crafter) then return false end
 	local text = "/w " .. U.WhisperName(crafter) .. " " .. self:RequestText(recipeID)
 	local open = (ChatFrameUtil and ChatFrameUtil.OpenChat) or ChatFrame_OpenChat

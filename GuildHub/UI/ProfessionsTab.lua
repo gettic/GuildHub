@@ -69,7 +69,11 @@ local function CraftersText(cs)
 	for i = 1, math.min(3, #cs) do
 		local c = cs[i]
 		local s = U.ShortName(c.name)
-		parts[i] = c.online and ("|cff40ff40" .. s .. "|r") or ("|cff999999" .. s .. "|r")
+		if c.mine then
+			parts[i] = "|cffffd100" .. GH:MineLabel(c) .. "|r" -- your own character: gold, never "online" green
+		else
+			parts[i] = c.online and ("|cff40ff40" .. s .. "|r") or ("|cff999999" .. s .. "|r")
+		end
 	end
 	local t = table.concat(parts, ", ")
 	if #cs > 3 then t = t .. L.TIP_MORE:format(#cs - 3) end
@@ -85,7 +89,7 @@ local function FillRow(r, d)
 	r.hl:SetShown(not isHeader)
 	Show(r, DIR_PARTS, not isHeader and not isRecipe)
 	Show(r, REC_PARTS, isRecipe)
-	r.whisper:SetShown(not isHeader and not isRecipe and not d.isSelf)
+	r.whisper:SetShown(not isHeader and not isRecipe and not d.isSelf and not d.mine) -- never yourself / your alts
 	r.request:SetShown(isRecipe)
 	if isHeader then
 		r.header:SetText(("%s (%d)"):format(GH:ProfName(d.header), d.count))
@@ -93,7 +97,7 @@ local function FillRow(r, d)
 		r.bg:SetColorTexture(0, 0, 0, 0)
 		return
 	end
-	r.bg:SetColorTexture(1, 1, 1, d.isSelf and 0.07 or 0.03)
+	r.bg:SetColorTexture(1, 1, 1, (d.isSelf or d.mine) and 0.07 or 0.03)
 	if isRecipe then
 		local icon
 		if C_Spell and C_Spell.GetSpellTexture then icon = C_Spell.GetSpellTexture(d.recipe) end
@@ -106,12 +110,18 @@ local function FillRow(r, d)
 		r.request:SetGreyed(not anyOnline)
 		return
 	end
-	r.name:SetText(U.ClassColored(d.name, d.class))
+	local shown = U.ClassColored(d.name, d.class)
+	if d.mine == "self" then shown = L.PROF_YOU:format(shown)
+	elseif d.mine == "alt" then shown = L.PROF_YOU_ALT:format(shown) end
+	r.name:SetText(shown)
 	r.prof:SetText(GH:ProfName(d.line))
 	r.skill:SetText(d.rank and d.max and ("%d/%d"):format(d.rank, d.max) or tostring(d.rank or "-"))
 	r.spec:SetText(d.spec or "-")
 	r.recipes:SetText(d.recipes > 0 and tostring(d.recipes) or "-")
-	if d.online then
+	if d.mine == "alt" then
+		r.seen:SetText(L.PROF_ALT_HINT) -- your alt: log in on it to craft (nobody to whisper)
+		r.seen:SetTextColor(W.GOLD[1], W.GOLD[2], W.GOLD[3])
+	elseif d.online then
 		r.seen:SetText(L.PROF_ONLINE)
 		r.seen:SetTextColor(0.45, 0.9, 0.45)
 	else
@@ -140,9 +150,14 @@ function GH:ProfRowTooltip(owner, d)
 		GameTooltip:AddLine(L.PROF_CAN_MAKE, W.GOLD[1], W.GOLD[2], W.GOLD[3])
 		for i, c in ipairs(d.crafters) do
 			if i > 12 then GameTooltip:AddLine(L.TIP_MORE:format(#d.crafters - 12), 0.6, 0.6, 0.6) break end
-			local g = c.online and 1 or 0.6
-			GameTooltip:AddDoubleLine(U.ShortName(c.name), (c.online and L.PROF_ONLINE or "") .. "  " .. tostring(c.rank or ""),
-				g, g, g, c.online and 0.45 or 0.6, c.online and 0.9 or 0.6, c.online and 0.45 or 0.6)
+			if c.mine then -- your own character: gold, with how to craft it
+				GameTooltip:AddDoubleLine(self:MineLabel(c), (c.mine == "alt" and L.PROF_ALT_HINT or "") .. "  " .. tostring(c.rank or ""),
+					W.GOLD[1], W.GOLD[2], W.GOLD[3], W.GOLD[1], W.GOLD[2], W.GOLD[3])
+			else
+				local g = c.online and 1 or 0.6
+				GameTooltip:AddDoubleLine(U.ShortName(c.name), (c.online and L.PROF_ONLINE or "") .. "  " .. tostring(c.rank or ""),
+					g, g, g, c.online and 0.45 or 0.6, c.online and 0.9 or 0.6, c.online and 0.45 or 0.6)
+			end
 		end
 	else
 		GameTooltip:AddLine(U.ClassColored(d.name, d.class))
@@ -217,7 +232,12 @@ function GH:ShowRequestPopup(d, anchor)
 	for i, b in ipairs(p.buttons) do
 		local c = d.crafters[i]
 		b:SetShown(c ~= nil)
-		if c then
+		if c and c.mine then -- yourself / your alt (listed last): never a request, greyed
+			b.crafter = nil
+			b:SetLabel(c.mine == "self" and L.REQ_SELF or L.REQ_ALT:format(U.ShortName(c.name)))
+			b:SetEnabled(false)
+			b:SetGreyed(true)
+		elseif c then
 			local online = c.online and GH:IsOnline(c.name)
 			b.crafter = online and c.name or nil -- offline: the button does nothing (greyed)
 			b:SetLabel(("%s  (%s)"):format(U.ShortName(c.name), online and L.PROF_ONLINE or L.PROF_OFFLINE))

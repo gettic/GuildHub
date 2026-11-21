@@ -395,6 +395,26 @@ local function CheckSaved()
     Count()
     ok, fixed = pcall(RepairOn, { window = 5, minimap = "x", alerts = 3, sort = {}, shareProf = "y" }, { guilds = 7 })
     if not ok then Problem("DB", "broken", Short(fixed)) end
+    -- own characters (Alts.lua): a damaged list is repaired and keeps its good entries (copy only)
+    if GH.AltSelfTest then
+        Count()
+        local acct = { chars = { [5] = {}, ["Bad Name"] = {}, ["Good One-Realm"] = { ts = 1 }, ["Odd One-Realm"] = "x",
+            ["Two Bits-Realm"] = { ts = "y", g = 3 } } }
+        local okA, errA = pcall(RepairOn, {}, { guilds = {}, account = acct })
+        local c = acct.chars
+        if not okA then Problem("DB", "alts repair", Short(errA))
+        elseif not (c["Good One-Realm"] and c["Two Bits-Realm"] and c["Two Bits-Realm"].ts == 0 and c[5] == nil
+            and c["Bad Name"] == nil and c["Odd One-Realm"] == nil) then
+            Problem("DB", "alts repair", "wrong result")
+        end
+        Count()
+        local okT, probs, line = pcall(GH.AltSelfTest, GH)
+        if not okT then Problem("ERR", "alts", Short(probs))
+        else
+            for _, p in ipairs(probs) do Problem("ALT", "own chars", p) end
+            Info(line)
+        end
+    end
     -- professions: every saved recipe list decodes and matches its hash (copy only)
     local gdb = GH:GetGuildDB()
     if not gdb then return end
@@ -514,13 +534,15 @@ end
 function ST.RecruitOffParts()
     local t = GH.recruitTab or {}
     local pros, dni = t.pros or {}, t.dni or {}
+    local row1 = pros.rows and pros.rows[1]
     return {
         { name = "rec.side.officer", obj = t.side and t.side.buttons and t.side.buttons.officer },
         { name = "off.prosTitle", obj = pros.title },
         { name = "off.prosList", obj = pros.inset },
         { name = "off.prosClear", obj = pros.clear },
-        { name = "off.prosRow1", obj = pros.rows and pros.rows[1], opt = true, shownOnly = true },
-        { name = "off.prosInvite1", obj = pros.rows and pros.rows[1] and pros.rows[1].invite, opt = true, shownOnly = true },
+        { name = "off.prosRow1", obj = row1, opt = true, shownOnly = true },
+        -- only while its row shows (an empty list hides the row, the button stays "shown" inside it)
+        { name = "off.prosInvite1", obj = row1 and row1:IsShown() and row1.invite or nil, opt = true, shownOnly = true },
         { name = "off.dniTitle", obj = dni.title },
         { name = "off.dniList", obj = dni.inset },
         { name = "off.dniClear", obj = dni.clear },

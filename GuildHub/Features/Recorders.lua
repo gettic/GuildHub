@@ -414,6 +414,10 @@ local function LogRank(rank)
 	return nil
 end
 
+-- a name the event should have is missing (0.5.0-b3)
+local TWO_NAMES = { invite = true, promote = true, demote = true, remove = true }
+local function Nameless(e) return e.p1 == nil or (TWO_NAMES[e.ty] and e.p2 == nil) or false end
+
 -- the same event? (unknown names / rank match anything; the game may not know an old name yet)
 local function SameEvent(e, x)
 	return e.ty == x.ty and (e.p1 == x.p1 or e.p1 == nil or x.p1 == nil)
@@ -445,30 +449,35 @@ function GH:ReadEventLog()
 			end
 		end
 	end
-	local used, added = {}, {}
-	for _, x in ipairs(read) do
-		local best, bestWild, bestD
-		for _, e in ipairs(r.log) do
-			if not used[e] and SameEvent(e, x) then
-				local dd = math.abs(e.t - x.t)
-				if dd <= LogTol(EntryUnit(e, now), x.u) then
-					local wild = not (e.p1 == x.p1 and e.p2 == x.p2 and e.r == x.r)
-					if not best or (bestWild and not wild) or (wild == bestWild and dd < bestD) then
-						best, bestWild, bestD = e, wild, dd
+	local used, added, matched = {}, {}, {}
+	-- 0.5.0-b3: two passes. Pass 1: every read entry takes only its exact copy (same names and rank),
+	-- the closest in time. Pass 2: the rest (a name missing on one side) take the closest look-alike.
+	-- So an entry whose name the game doesn't know yet can't take another event's copy.
+	for pass = 1, 2 do
+		for i, x in ipairs(read) do
+			if not matched[i] then
+				local best, bestD
+				for _, e in ipairs(r.log) do
+					if not used[e] and SameEvent(e, x)
+						and (pass == 2 or (e.p1 == x.p1 and e.p2 == x.p2 and e.r == x.r)) then
+						local dd = math.abs(e.t - x.t)
+						if dd <= LogTol(EntryUnit(e, now), x.u) and (not best or dd < bestD) then best, bestD = e, dd end
 					end
+				end
+				if best then
+					matched[i] = best
+					used[best] = true
+					best.p1, best.p2, best.r = best.p1 or x.p1, best.p2 or x.p2, best.r or x.r
+					-- the older time wins: a time worked out from "N months ago" is never too old, only too
+					-- new (and an age of 0 from a log that wasn't loaded yet is the newest of all)
+					if x.t < best.t then best.t, best.u = x.t, x.u end
+					if not best.u then best.u = x.u end
 				end
 			end
 		end
-		if best then
-			used[best] = true
-			best.p1, best.p2, best.r = best.p1 or x.p1, best.p2 or x.p2, best.r or x.r
-			-- the older time wins: a time worked out from "N months ago" is never too old, only too
-			-- new (and an age of 0 from a log that wasn't loaded yet is the newest of all)
-			if x.t < best.t then best.t, best.u = x.t, x.u end
-			if not best.u then best.u = x.u end
-		else
-			added[#added + 1] = x
-		end
+	end
+	for i, x in ipairs(read) do
+		if not matched[i] then added[#added + 1] = x end
 		local joiner = (x.ty == "join" and x.p1) or (x.ty == "invite" and x.p2) or nil
 		if joiner and (x.ty == "join" or not r.joins[joiner]) then
 			if not r.joins[joiner] or x.t < r.joins[joiner] then r.joins[joiner] = x.t end
@@ -483,7 +492,17 @@ function GH:ReadEventLog()
 		for _, x in ipairs(read) do listed[LogKey(x)] = true end
 		for i = #r.log, 1, -1 do
 			local e = r.log[i]
-			if not used[e] and e.t >= from and listed[LogKey(e)] then
+			-- 0.5.0-b3: also a copy saved without a name, next to a fully named read entry of that event
+			local leftover = false
+			if not used[e] and e.t >= from and not listed[LogKey(e)] and Nameless(e) then
+				for _, x in ipairs(read) do
+					if not Nameless(x) and SameEvent(e, x) and math.abs(e.t - x.t) <= LogTol(EntryUnit(e, now), x.u) then
+						leftover = true
+						break
+					end
+				end
+			end
+			if not used[e] and e.t >= from and (listed[LogKey(e)] or leftover) then
 				table.remove(r.log, i)
 				removed = removed + 1
 			end
@@ -495,6 +514,7 @@ function GH:ReadEventLog()
 	Trim(r.log, MAX.log)
 	self.recLogRead = true
 	self.recLogGame = n -- self-test: how many entries the game has
+	self.recLogAlike = LogDoubles(read, now, false) -- self-test: real look-alike events the game itself lists
 end
 
 function GH:QueryEventLog()
@@ -581,8 +601,11 @@ GH:RegisterFeature({
 		local okD, doubles = pcall(LogDoubles, r.log, Now(), false)
 		-- (info only: two real events can look alike, e.g. the same player invited twice in a day)
 		if not okD then api.Problem("DB", "history", "log check failed") doubles = "!" end
-		api.Info(("history %d/%d/%d/%d, log doubles %s, removed %d, game %s"):format(c.first, c.hours, c.kills, c.log,
-			tostring(doubles), type(r.logFixed) == "number" and r.logFixed or 0, tostring(GH.recLogGame or "-")))
+		-- 0.5.0-b3: look-alikes the game itself lists (e.g. a member who left and came back) are not doubles
+		local alike = type(GH.recLogAlike) == "number" and GH.recLogAlike or 0
+		if type(doubles) == "number" then doubles = math.max(0, doubles - alike) end
+		api.Info(("history %d/%d/%d/%d, log doubles %s, alike %d, removed %d, game %s"):format(c.first, c.hours, c.kills, c.log,
+			tostring(doubles), alike, type(r.logFixed) == "number" and r.logFixed or 0, tostring(GH.recLogGame or "-")))
 		-- 0.4.0-b3: message of the day only from the GUILD_MOTD event (seen this session y/n, saved count)
 		api.Info(("motd seen %s, saved %d"):format(type(GH.lastMOTD) == "string" and "y" or "n", c.motd))
 	end,
