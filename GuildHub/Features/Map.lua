@@ -7,6 +7,9 @@
 -- Fair trade (Features.lua): only a player who shares their own position sees guildmates' dots.
 -- Zone counts (UI\MapPins.lua) come from Blizzard's own guild list zone, numbers only.
 -- The dots themselves are drawn by UI\MapPins.lua (HereBeDragons).
+-- 0.6.0 (plans\map-extras): hidden while AFK (setting, default on), "Find me" (a POS with f = 1,
+-- click only, one per 30 s; receivers: pulse + at most one chat line per sender per 2 min), the
+-- welcome card's "Zone only" (= the lasting no). Dungeon labels: Features\MapDungeons.lua.
 local _, ns = ...
 local GH, L, U = ns.GH, ns.L, ns.Util
 
@@ -19,7 +22,11 @@ local MOVE_MIN = 0.002     -- of the zone's width/height (a few yards)
 local ROUND = 1000         -- 3 decimals
 local OFF_GAP = 3          -- seconds between two "off" messages (they skip the 12 s gap)
 local WELCOME_DELAY = 10   -- seconds after start-up
+local FIND_SECONDS = 30    -- 0.6.0 "Find me": at most one per 30 s (tos), click only
+local FIND_LINE_SECONDS = 120 -- receiver: at most one chat line per sender per 2 minutes (tos b)
+local FIND_WAIT_SECONDS = 60  -- a line that arrived in combat is shown after combat if still this fresh
 GH.MAP_POS_SECONDS, GH.MAP_KEEP_SECONDS = POS_SECONDS, KEEP_SECONDS
+GH.MAP_FIND_SECONDS, GH.MAP_FIND_LINE_SECONDS = FIND_SECONDS, FIND_LINE_SECONDS
 
 -- Enum.UIMapType values (from the game when there)
 local function MapTypes()
@@ -31,7 +38,9 @@ local function MapTypes()
 end
 
 GH.positions = {}  -- [name] = { m, x, y, t } other players' dots: memory only, never saved
-GH.posStats = { sent = 0, offSent = 0, beforeYes = 0, inInstance = 0, inCombat = 0, minGap = nil, last = nil }
+GH.posStats = { sent = 0, offSent = 0, beforeYes = 0, inInstance = 0, inCombat = 0, inAfk = 0, minGap = nil, last = nil }
+-- Find me (self-test): sent / sent without sharing / smallest gap; got = pulses received, lines = chat lines shown
+GH.findStats = { sent = 0, noShare = 0, minGap = nil, last = nil, got = 0, lines = 0 }
 local SHARE = { ask = true, yes = true, no = true }
 
 ------------------------------------------------------------------------
@@ -118,12 +127,19 @@ end
 ------------------------------------------------------------------------
 -- The send gate (used by Comm.lua before queueing AND before the real send)
 ------------------------------------------------------------------------
--- Not in an instance, no lockdown, no combat. Returns ok, why.
+-- 0.6.0: AFK with "Hide my dot while AFK" on (the default).
+function GH:PosAfkHidden()
+	local p = self.db and self.db.profile
+	return p ~= nil and p.mapHideAfk ~= false and UnitIsAFK ~= nil and UnitIsAFK("player") and true or false
+end
+
+-- Not in an instance, no lockdown, no combat, not hidden while AFK. Returns ok, why.
 function GH:PosCanSend()
 	if IsInInstance() then return false, "instance" end
 	if self:InLockdown() then return false, "lockdown" end
 	if InCombatLockdown and InCombatLockdown() then return false, "combat" end
 	if self.cannotSend then return false, "trial" end
+	if self:PosAfkHidden() then return false, "afk" end
 	return true
 end
 
@@ -156,20 +172,43 @@ local function OnPosSent(gh, item)
 	if gh:MapShareAnswer() ~= "yes" then st.beforeYes = st.beforeYes + 1 end
 	if IsInInstance() then st.inInstance = st.inInstance + 1 end
 	if InCombatLockdown and InCombatLockdown() then st.inCombat = st.inCombat + 1 end
+	if gh:PosAfkHidden() then st.inAfk = st.inAfk + 1 end
 	local now = GetTime()
 	if st.last then
 		local gap = now - st.last
 		if not st.minGap or gap < st.minGap then st.minGap = gap end
 	end
 	st.last = now
+	if type(data) == "table" and data.f == 1 then
+		local fs = gh.findStats
+		fs.sent = fs.sent + 1
+		if gh:MapShareAnswer() ~= "yes" then fs.noShare = fs.noShare + 1 end
+		if fs.last then
+			local gap = now - fs.last
+			if not fs.minGap or gap < fs.minGap then fs.minGap = gap end
+		end
+		fs.last = now
+	end
+end
+
+-- A "Find me" POS still waiting (held for the 12 s gap, or queued for room)?
+local function FindWaiting(gh)
+	local h = gh.held and gh.held.POS
+	if h and type(h[2]) == "table" and h[2].f == 1 then return true end
+	for _, q in ipairs(gh.sendQueue or {}) do
+		if q.key == "POS" and type(q.data) == "table" and q.data.f == 1 then return true end
+	end
+	return false
 end
 
 ------------------------------------------------------------------------
 -- Sending
 ------------------------------------------------------------------------
-function GH:SendPos(m, x, y)
-	-- posLast / posOn are set in OnPosSent, when it really leaves
-	self:SendMsg("POS", { m = m, x = x, y = y })
+function GH:SendPos(m, x, y, find)
+	-- posLast / posOn are set in OnPosSent, when it really leaves. A newer spot replaces a waiting
+	-- one; a waiting "Find me" keeps its flag (the 12 s gap may hold it for a moment).
+	local f = (find or FindWaiting(self)) and 1 or nil
+	self:SendMsg("POS", { m = m, x = x, y = y, f = f })
 end
 
 -- Our dot is gone (no, instance, feature off). Only if one really left (posOn, set in OnPosSent).
@@ -185,7 +224,7 @@ function GH:PosTick()
 	if not self:FeatureOn("map") or self:MapShareAnswer() ~= "yes" then return end
 	local ok, why = self:PosCanSend()
 	if not ok then
-		if why == "instance" then self:SendPosOff() end
+		if why == "instance" or why == "afk" then self:SendPosOff() end
 		return
 	end
 	local m, x, y = self:OwnPosition()
@@ -197,6 +236,89 @@ end
 
 local function OnZone()
 	if IsInInstance() then GH:SendPosOff() end
+end
+
+-- 0.6.0: AFK on → our dot goes at once ("off", 3 s gap); AFK off → the next spot (12 s gap kept).
+local function OnFlags(_, unit)
+	if unit ~= nil and unit ~= "player" then return end
+	if GH:PosAfkHidden() then
+		GH:SendPosOff()
+	elseif GH:MapShareAnswer() == "yes" and not GH.posOn then
+		GH:PosTick()
+	end
+	if GH.UpdateFindButton then GH:UpdateFindButton() end
+end
+
+------------------------------------------------------------------------
+-- "Find me" (0.6.0): one click = our dot pulses on guildmates' maps. Click only, at most one per
+-- 30 s, only while we share our exact position (same gate as POS). Old clients see a normal POS.
+------------------------------------------------------------------------
+-- ok, why ("feature" / "trial" / "share" / "instance" / "lockdown" / "combat" / "afk" / "wait" / "nopos"), seconds left
+function GH:FindMeState()
+	if not self:FeatureOn("map") then return false, "feature" end
+	if self.cannotSend then return false, "trial" end
+	if self:MapShareAnswer() ~= "yes" then return false, "share" end
+	local ok, why = self:PosCanSend()
+	if not ok then return false, why end
+	-- 30 s from the last click AND from the last one that really left (the 12 s POS gap can hold a
+	-- click back for a moment), so two never go out closer than 30 s
+	local last = math.max(self.findLast or -1000, self.findStats.last or -1000)
+	local left = FIND_SECONDS - (GetTime() - last)
+	if left > 0 then return false, "wait", math.ceil(left) end
+	if FindWaiting(self) then return false, "wait", FIND_SECONDS end
+	if not self:OwnPosition() then return false, "nopos" end
+	return true
+end
+
+-- The click (Status tab button or /ghub findme). Returns true when it was sent.
+function GH:FindMe()
+	local ok, why, left = self:FindMeState()
+	if not ok then
+		self:Msg(L.FIND_NOT, (L.FIND_WHY[why] or why):format(left or 0))
+		return false
+	end
+	local m, x, y = self:OwnPosition()
+	self.findLast = GetTime()
+	self:SendPos(m, x, y, true)
+	self:Msg(L.FIND_SENT)
+	if self.UpdateFindButton then self:UpdateFindButton() end
+	-- the button lights up again when the 30 s are over
+	self:ScheduleTimer(function() if GH.UpdateFindButton then GH:UpdateFindButton() end end, FIND_SECONDS + 0.2)
+	return true
+end
+
+-- Receiver: a guildmate asked to be found. Only called for a dot we keep (fair trade, not ignored).
+local findLineAt, findWaiting = {}, {}
+
+local function FindLine(gh, sender)
+	local now = GetTime()
+	if findLineAt[sender] and now - findLineAt[sender] < FIND_LINE_SECONDS then return end -- tos (b)
+	findLineAt[sender] = now
+	local r = gh.roster[sender]
+	local zone = r and type(r.zone) == "string" and not U.IsSecret(r.zone) and r.zone ~= "" and U.CleanText(r.zone, 40) or nil
+	gh.findStats.lines = gh.findStats.lines + 1
+	-- tos (a): our own chat frame only (AddMessage), "Guild Hub:" in the addon's colour; (c) no sound,
+	-- no waypoint, the map is not opened
+	if zone then gh:Msg(L.FIND_LINE, U.ShortName(sender), zone)
+	else gh:Msg(L.FIND_LINE_NOZONE, U.ShortName(sender)) end
+end
+
+function GH:MapFindMe(sender)
+	if self:IsMuted(sender) then return end -- tos (b): the mute stops the line and the pulse
+	self.findStats.got = self.findStats.got + 1
+	local inCombat = InCombatLockdown and InCombatLockdown()
+	if not inCombat and self.MapPulse then self:MapPulse(sender) end
+	if self.db.profile.mapFindLines == false then return end
+	if inCombat then findWaiting[sender] = GetTime() return end
+	FindLine(self, sender)
+end
+
+local function AfterCombatFind()
+	local now = GetTime()
+	for sender, t in pairs(findWaiting) do
+		findWaiting[sender] = nil
+		if now - t <= FIND_WAIT_SECONDS and GH.positions[sender] and not GH:IsMuted(sender) then FindLine(GH, sender) end
+	end
 end
 
 ------------------------------------------------------------------------
@@ -236,6 +358,7 @@ local function HandlePos(self, sender, data, distribution, isSelf)
 	self.positions[sender] = { m = m, x = x, y = y, t = GetTime() }
 	self:Debug("position from %s", U.ShortName(sender)) -- never the coordinates (chat logs)
 	if self.MapDotChanged then self:MapDotChanged(sender) end
+	if data.f == 1 then self:MapFindMe(sender) end
 end
 
 -- HB: "ps" = still sharing at the same spot (keeps the dot); no "ps" = no dot any more.
@@ -260,6 +383,7 @@ end
 function GH:MapRosterCheck()
 	if not self:FeatureOn("map") then return end
 	self:MapCheckDots()
+	if self.MapAfkRefresh then self:MapAfkRefresh() end
 	if self.MapZoneCountsDirty then self:MapZoneCountsDirty() end
 end
 
@@ -321,8 +445,10 @@ function GH:MapWelcomeCard()
 		text = L.CARD_MAP_BODY,
 		note = L.CARD_MAP_NOTE,
 		buttons = {
-			{ label = L.CARD_MAP_SHARE, fn = function() GH:SetMapShare("yes") end },
-			{ label = L.CARD_MAP_NOTNOW, fn = function() GH.mapAskedThisSession = true end },
+			{ label = L.CARD_MAP_SHARE, width = 140, fn = function() GH:SetMapShare("yes") end },
+			-- 0.6.0: the lasting no (tos item 7: the card's note says it can be changed in Settings)
+			{ label = L.CARD_MAP_ZONE, width = 106, fn = function() GH:SetMapShare("no") end },
+			{ label = L.CARD_MAP_NOTNOW, width = 106, fn = function() GH.mapAskedThisSession = true end },
 		},
 		-- the X / Esc is "Not now": asked again next login
 		onClose = function() GH.mapAskedThisSession = true end,
@@ -353,7 +479,7 @@ end
 ------------------------------------------------------------------------
 GH:RegisterFeature({
 	key = "map", name = "OPT_FEAT_MAP",
-	defaults = { profile = { mapMinimap = true }, char = { mapShare = "ask" } },
+	defaults = { profile = { mapMinimap = true, mapHideAfk = true, mapFindLines = true }, char = { mapShare = "ask" } },
 	messages = { POS = { class = "normal", min = POS_SECONDS, latest = true, gate = PosGate, onSend = OnPosSent,
 		-- "my dot is gone" skips the 12 s gap, but keeps OFF_GAP seconds from the last "off" (tos: fast toggling)
 		urgent = function(data) return type(data) == "table" and data.off == 1 and OFF_GAP or nil end } },
@@ -370,6 +496,8 @@ GH:RegisterFeature({
 		gh:On("map", "ZONE_CHANGED_NEW_AREA", OnZone)
 		gh:On("map", "PLAYER_ENTERING_WORLD", OnZone)
 		gh:On("map", "IGNORELIST_UPDATE", OnIgnoreList)
+		gh:On("map", "PLAYER_FLAGS_CHANGED", OnFlags)
+		gh:On("map", "PLAYER_REGEN_ENABLED", AfterCombatFind)
 		if gh.MapPinsEnable then gh:MapPinsEnable() end
 	end,
 	disable = function(gh)
@@ -379,15 +507,19 @@ GH:RegisterFeature({
 		gh.posOn, gh.posLast = nil, nil
 		if had and gh.started then gh:SendMsg("HB", gh:SelfInfo()) end
 		wipe(gh.positions)
+		wipe(findWaiting)
 		if gh.MapPinsDisable then gh:MapPinsDisable() end
 	end,
 	selftest = function(api)
-		local st = GH.posStats
-		api.Count(4)
+		local st, fs = GH.posStats, GH.findStats
+		api.Count(7)
 		if st.beforeYes > 0 then api.Problem("MAP", "privacy", st.beforeYes .. " position(s) sent before a yes") end
 		if st.inInstance > 0 then api.Problem("MAP", "privacy", st.inInstance .. " position(s) sent in an instance") end
 		if st.inCombat > 0 then api.Problem("MAP", "privacy", st.inCombat .. " position(s) sent in combat") end
+		if st.inAfk > 0 then api.Problem("MAP", "privacy", st.inAfk .. " position(s) sent while hidden for AFK") end
 		if st.minGap and st.minGap < POS_SECONDS - 0.2 then api.Problem("MAP", "rate", ("positions %.1f s apart"):format(st.minGap)) end
+		if fs.noShare > 0 then api.Problem("MAP", "findme", fs.noShare .. " Find me sent without sharing") end
+		if fs.minGap and fs.minGap < FIND_SECONDS - 0.2 then api.Problem("MAP", "findme", ("Find me %.1f s apart"):format(fs.minGap)) end
 		if GH.MapSelfTest then GH:MapSelfTest(api) end
 	end,
 })

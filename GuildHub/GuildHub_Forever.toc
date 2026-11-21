@@ -2,7 +2,7 @@
 ## Title: Guild Hub
 ## Notes: See what your guildmates are doing, where they are and what they can craft.
 ## Author: gettic
-## Version: 0.5.0-beta.4
+## Version: 0.6.0-beta.1
 ## AllowLoadGameType: forever
 ## SavedVariables: GuildHubDB
 ## IconTexture: Interface\Icons\INV_Misc_GroupNeedMore
@@ -25,6 +25,7 @@ Status.lua
 Professions.lua
 Features\Recorders.lua
 Features\Map.lua
+Features\MapDungeons.lua
 Features\RecruitOff.lua
 Features\RecruitTools.lua
 Features\RecruitAds.lua

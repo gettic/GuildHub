@@ -31,7 +31,7 @@ The Recruiting page only shows when the Guild Recruiter is on. On Trial and Vete
 - Small alerts when a guildmate near your level looks for a group, or someone asks for help.
 - A Professions tab: who has which profession, and who can make an item.
 - A "crafted by" line in item tooltips.
-- Guild map dots: guildmates who share their position show on the world map and the minimap.
+- Guild map dots: guildmates who share their position show on the world map and the minimap, with a hover card, dungeon labels and a "Find me" button.
 - A short Getting started walkthrough.
 - A Guild Recruiter (beta): a Recruiting tab with what the guild needs, the guild makeup, the guild's ad to post or copy, and lists for officers.
 
@@ -69,15 +69,22 @@ Open each of your profession windows once, so Guild Hub can read your recipes.
 
 ## Guild map
 
-Guildmates who share their position show as class-coloured dots on the world map and the minimap. Hover a dot to see name, level, status and how long ago. The world map also shows how many guildmates are in each zone (from the guild list). Players on your ignore list get no dot.
+Guildmates who share their position show as class-coloured dots on the world map and the minimap. Dots of guildmates who are AFK are dimmed. Players on your ignore list get no dot. The world map also shows how many guildmates are in each zone (from the guild list).
 
-**Sharing your position.** The first time on each character, a small "Guild Hub" card asks: "Share my position" or "Not now". "Not now" asks again next login. Turning it off in Settings > What I share is a real no. Your position is:
+**Hover card.** Hover a dot to see a card with the name, level, class, rank, zone, status, group size, professions and how long ago the position was sent. If other dots sit right next to it, an "Also here" line names them. Group size and professions show only if you share those yourself (see [Fair trade](#fair-trade)). No card in combat.
+
+**Dungeon labels.** On the world map, dungeon entrances show how many online guildmates are inside, for example "The Deadmines 2". Blackrock Mountain has one combined label, such as "Blackrock Mountain: BRD 2 · MC 5". Only numbers show, never names. The counts come from the guild list and from statuses, and nothing is sent for them.
+
+**Find me.** Lost your guildmates, or want them to spot you? Click the "Find me" button on the Status tab, or type `/ghub findme`. Your dot pulses on the maps of guildmates who share their position, and they get one chat line. It works only while you share your exact position, and at most once every 30 seconds. Turn the chat line off with "Show Find me lines in chat" in Settings > Guild map. Muting someone stops their pulses and lines.
+
+**Sharing your position.** The first time on each character, a small "Guild Hub" card asks: "Share my position", "Zone only" or "Not now". "Zone only" is a lasting no: guildmates see only your zone in the guild list, and the card stops asking. "Not now" asks again next login. Turning it off in Settings > What I share is also a real no. Your position is:
 
 - sent only in the open world, never in dungeons, raids or battlegrounds
 - sent at most every 12 seconds, and only when you move
 - sent only to your guild, and never saved
+- hidden while you are AFK (your dot goes, and comes back when you return)
 
-The Guild map section in Settings has a switch for the minimap dots. `/ghub test map` shows three made-up guildmates for 60 seconds, only on your screen.
+The Guild map section in Settings has these switches: the minimap dots, "Hide my dot while AFK" (on by default) and "Show Find me lines in chat" (on by default). `/ghub test map` shows three made-up guildmates for 60 seconds, only on your screen.
 
 ## Guild Recruiter
 
@@ -154,6 +161,7 @@ Copy the `GuildHub` folder into your WoW `AddOns` folder, then restart the game 
 | `/ghub help` | Show the list of commands |
 | `/ghub status` | Show who has Guild Hub and which version (beta testers too), the guild history counts, and how many addon messages you sent in the last 10 minutes |
 | `/ghub options` | Open Settings |
+| `/ghub findme` | Make your dot pulse on guildmates' maps (see [Guild map](#guild-map)) |
 | `/ghub start` | Open the Getting started walkthrough |
 | `/ghub recruit` | Show the guild's recruitment text to copy |
 | `/ghub ad trade` / `/ghub ad general` | Post the recruitment text (for the post button; see [Guild Recruiter](#guild-recruiter)) |
@@ -219,6 +227,7 @@ The addon lives in `GuildHub\`. Files are loaded in this order (see `GuildHub_Fo
 | `Professions.lua` | Professions: reading recipes, sharing them, search, tooltip line |
 | `Features\Recorders.lua` | Guild history kept on this computer |
 | `Features\Map.lua` | Guild map: sharing and receiving positions |
+| `Features\MapDungeons.lua` | Guild map: dungeon entrances and their labels |
 | `Features\RecruitOff.lua` | Guild Recruiter: officer lists, the name menu, Invite to guild, trials |
 | `Features\RecruitTools.lua` | Guild Recruiter: Suggest to officers, marking chat lines, guild totals |
 | `Features\RecruitAds.lua` | Guild Recruiter: the ad builder and the long post |

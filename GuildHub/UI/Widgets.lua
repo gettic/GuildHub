@@ -37,6 +37,11 @@ W.ART = {
 	-- UnitPositionFrameTemplates), tinted in the class colour; fallback a white square masked round
 	dot = { atlas = "WhiteCircle-RaidBlips", file = "Interface\\Buttons\\WHITE8X8",
 		mask = "Interface\\CharacterFrame\\TempPortraitAlphaMask" },
+	-- 0.6.0 "Find me" pulse: Blizzard's own minimap ping ring (used by its GroupMembersDataProvider),
+	-- referenced by path (tos d); fallback = the dot art itself, growing and fading
+	ping = { file = "Interface\\minimap\\UI-Minimap-Ping-Expand" },
+	-- 0.6.0 dungeon labels: Blizzard's dungeon / raid map icons; fallback = text only
+	dungeonIcon = { dungeon = "Dungeon", raid = "Raid" },
 }
 
 -- Blizzard's font colours (read from the game when there, else the same values).
@@ -259,6 +264,20 @@ local function HasFile(path)
 		fileKnown[path] = ok and type(id) == "number" and id > 0 or false
 	end
 	return fileKnown[path]
+end
+
+-- 0.6.0: the Find me pulse ring: "file", path, or "dot" (use the dot art instead).
+function W.PingArt()
+	local p = W.ART.ping
+	if p and p.file and HasFile(p.file) then return "file", p.file end
+	return "dot"
+end
+
+-- 0.6.0: the dungeon label's icon atlas ("dungeon" / "raid"), or nil (text only).
+function W.DungeonIconArt(kind)
+	local a = W.ART.dungeonIcon and W.ART.dungeonIcon[kind]
+	if a and W.HasAtlas(a) then return a end
+	return nil
 end
 
 -- Which art a tick state gets: "atlas", name / "file", path / "text", sign.

@@ -8,6 +8,8 @@
 --  * zone counts: numbers only, online members only, from the guild list the addon already reads
 --    every 60 s, rebuilt only while the world map is shown, never saved or sent;
 --  * no zone-enter or near-you alerts, no trails, nothing saved.
+-- 0.6.0 (plans\map-extras, tos-check.md): the hover card, AFK dimming, the Find me pulse ring
+-- (Blizzard's ping file by path), dungeon labels (numbers only, not clickable).
 local _, ns = ...
 local GH, L, U = ns.GH, ns.L, ns.Util
 local W = ns.Widgets
@@ -47,8 +49,9 @@ local function ClassColor(class)
 	return W.GOLD[1], W.GOLD[2], W.GOLD[3]
 end
 
-local function MakeDot(size)
+local function MakeDot(size, which)
 	local f = CreateFrame("Frame", nil, UIParent)
+	f.kind = which -- "world" / "mini" (the tooltip's "Also here" compares dots of the same kind)
 	f:SetSize(size, size)
 	f:EnableMouse(true) -- hover only (no OnClick / OnMouseUp)
 	local tex = f:CreateTexture(nil, "OVERLAY")
@@ -75,7 +78,7 @@ end
 local function Icons(name)
 	local ic = GH.mapIcons[name]
 	if not ic then
-		ic = { world = MakeDot(DOT_WORLD), mini = MakeDot(DOT_MINI) }
+		ic = { world = MakeDot(DOT_WORLD, "world"), mini = MakeDot(DOT_MINI, "mini") }
 		ic.world.who, ic.mini.who = name, name
 		GH.mapIcons[name] = ic
 	end
@@ -94,6 +97,34 @@ end
 ------------------------------------------------------------------------
 -- Tooltip (hover only)
 ------------------------------------------------------------------------
+local STACK_PX, STACK_MAX = 10, 5
+
+-- Other dots of the same kind (world / minimap) within STACK_PX screen pixels of this one: only dots
+-- already on this player's map (tos 4: "Also here" names only dots the receiver already sees).
+local function DotsNear(owner)
+	local names = {}
+	if not (owner.GetCenter and owner.GetEffectiveScale) then return names end
+	local ox, oy = owner:GetCenter()
+	if not ox then return names end
+	local os = owner:GetEffectiveScale()
+	for name, ic in pairs(GH.mapIcons) do
+		local d = ic[owner.kind or "world"]
+		if d and d ~= owner and d:IsShown() and (GH.testPositions[name] or GH.positions[name]) then
+			local x, y = d:GetCenter()
+			if x then
+				local s = d:GetEffectiveScale()
+				local dx, dy = x * s - ox * os, y * s - oy * os
+				if dx * dx + dy * dy <= STACK_PX * STACK_PX then names[#names + 1] = name end
+			end
+		end
+	end
+	table.sort(names)
+	return names
+end
+GH.MapDotsNear = DotsNear
+
+-- The hover card (0.6.0): name (+ AFK), level · class · rank, zone, status, group size, professions,
+-- the hoverLines hook, "Also here", position age. Hover only; nothing in combat; none for ignored.
 function GH:DotTooltip(owner)
 	local name = owner.who
 	if not name or InCombat() then return end
@@ -101,9 +132,19 @@ function GH:DotTooltip(owner)
 	if not p then return end
 	if not p.test and self:IsIgnored(name) then return end -- tos: no tooltip for ignored players
 	GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
-	GameTooltip:AddLine(U.ClassColored(name, ClassOf(name, p)))
 	local r = self.roster[name]
-	if r and r.level then GameTooltip:AddLine(L.TIP_DOT_LEVEL:format(tostring(r.level)), 1, 1, 1) end
+	local class = ClassOf(name, p)
+	GameTooltip:AddLine(U.ClassColored(name, class) .. ((r and r.afk) and L.TIP_DOT_AFK or ""))
+	local parts = {}
+	if r and r.level then parts[#parts + 1] = L.TIP_DOT_LEVEL:format(tostring(r.level)) end
+	local cname = class and type(LOCALIZED_CLASS_NAMES_MALE) == "table" and LOCALIZED_CLASS_NAMES_MALE[class]
+	if type(cname) == "string" then parts[#parts + 1] = cname end
+	if r and type(r.rankName) == "string" and r.rankName ~= "" then parts[#parts + 1] = r.rankName end
+	if #parts > 0 then GameTooltip:AddLine(table.concat(parts, " · "), 1, 1, 1) end
+	local zone = r and r.zone
+	if type(zone) == "string" and not U.IsSecret(zone) and zone ~= "" then
+		GameTooltip:AddLine(U.CleanText(zone, 40), 0.8, 0.8, 0.8)
+	end
 	local gdb = self:GetGuildDB()
 	local m = gdb and gdb.members[name]
 	local s = m and m.status
@@ -111,9 +152,121 @@ function GH:DotTooltip(owner)
 		local line = self:StatusLine(s, true, self:IsMuted(name))
 		if line and line ~= "" then GameTooltip:AddLine(line, 1, 0.82, 0, true) end
 	end
+	-- group size: only what they share, and only for someone who shares their own (fair trade)
+	local u = self.addonUsers and self.addonUsers[name]
+	local g = u and u.grp
+	if g and type(g.g) == "number" and g.g > 0 and self:CanUse("group") then
+		GameTooltip:AddLine((g.r and L.TIP_GRP_RAID or L.TIP_GRP_PARTY):format(g.g), 0.8, 0.8, 0.8)
+	end
+	local prof = self.ProfLine and self:ProfLine(name) -- fair trade inside
+	if prof and prof ~= "" then GameTooltip:AddLine(prof, 0.8, 0.8, 0.8, true) end
+	-- later features' lines (each needs its own tos check)
+	for _, h in ipairs(self:Hooks("hoverLines")) do
+		if type(h) == "table" and type(h.fn) == "function" then
+			local ok, text, cr, cg, cb = pcall(h.fn, self, name)
+			if ok and type(text) == "string" and text ~= "" then GameTooltip:AddLine(text, cr or 1, cg or 1, cb or 1, true) end
+		end
+	end
+	local near = DotsNear(owner)
+	if #near > 0 then
+		local shown = {}
+		for i = 1, math.min(#near, STACK_MAX) do shown[i] = U.ShortName(near[i]) end
+		local text = L.TIP_DOT_ALSO:format(table.concat(shown, ", "))
+		if #near > STACK_MAX then text = text .. L.TIP_DOT_MORE:format(#near - STACK_MAX) end
+		GameTooltip:AddLine(text, 0.8, 0.8, 0.8, true)
+	end
 	if p.test then GameTooltip:AddLine(L.TIP_DOT_TEST, 0.6, 0.6, 0.6)
 	else GameTooltip:AddLine(L.TIP_DOT_AGO:format(U.Ago(math.max(0, GetTime() - p.t))), 0.6, 0.6, 0.6) end
 	GameTooltip:Show()
+end
+
+------------------------------------------------------------------------
+-- "Find me" pulse (0.6.0): a ring grows and fades around the dot for 15 s. Our own OnUpdate, only
+-- while a pulse runs and the dot is visible; the ring takes no mouse (the dot keeps its tooltip).
+------------------------------------------------------------------------
+local PULSE_SECONDS, PULSE_LOOP = 15, 1.2
+GH.pulseCount = 0
+
+local function RingUpdate(ring)
+	local now = GetTime()
+	if now >= ring.untilT then
+		ring:SetScript("OnUpdate", nil)
+		ring:Hide()
+		return
+	end
+	local t = (now % PULSE_LOOP) / PULSE_LOOP
+	local size = ring.base * (1 + 2 * t)
+	ring:SetSize(size, size)
+	ring:SetAlpha(1 - t)
+end
+
+local function Ring(dot)
+	local ring = dot.ring
+	if ring then return ring end
+	ring = CreateFrame("Frame", nil, dot)
+	ring:SetPoint("CENTER")
+	ring:EnableMouse(false)
+	local tex = ring:CreateTexture(nil, "ARTWORK")
+	tex:SetAllPoints()
+	local kind, art = W.PingArt()
+	if kind == "file" then
+		tex:SetTexture(art)
+	else
+		local dk, da = GH:DotArt()
+		if dk == "atlas" then
+			tex:SetAtlas(da)
+		else
+			tex:SetTexture(da)
+			if ring.CreateMaskTexture and tex.AddMaskTexture then
+				local mask = ring:CreateMaskTexture()
+				mask:SetTexture(W.ART.dot.mask, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+				mask:SetAllPoints(tex)
+				tex:AddMaskTexture(mask)
+			end
+		end
+	end
+	ring.tex, ring.art = tex, kind
+	ring:Hide()
+	dot.ring = ring
+	return ring
+end
+GH.MapRing = Ring
+
+local function Pulse(dot, r, g, b)
+	local ring = Ring(dot)
+	ring.base = dot:GetWidth() > 0 and dot:GetWidth() or DOT_WORLD
+	ring.untilT = GetTime() + PULSE_SECONDS
+	ring.tex:SetVertexColor(r, g, b)
+	ring:SetSize(ring.base, ring.base)
+	ring:SetScript("OnUpdate", RingUpdate)
+	ring:Show()
+end
+
+-- The sender's dots pulse (world map + minimap). Not in combat (Map.lua checks), only a dot we show.
+function GH:MapPulse(name)
+	local ic = self.mapIcons[name]
+	if not ic or not (self.positions[name] or self.testPositions[name]) then return end
+	local r, g, b = ClassColor(ClassOf(name, self.positions[name] or self.testPositions[name]))
+	Pulse(ic.world, r, g, b)
+	if self.db.profile.mapMinimap then Pulse(ic.mini, r, g, b) end
+	self.pulseCount = self.pulseCount + 1
+end
+
+------------------------------------------------------------------------
+-- AFK dimming (0.6.0): dots of guildmates Blizzard's guild list marks AFK (older clients, or the
+-- hide setting off) at half strength. Only an alpha change: no pin is added, moved or removed.
+------------------------------------------------------------------------
+local AFK_ALPHA = 0.5
+local function DimAfk(name, ic)
+	local r = GH.roster[name]
+	local a = (r and r.afk and not GH.testPositions[name]) and AFK_ALPHA or 1
+	ic.world:SetAlpha(a)
+	ic.mini:SetAlpha(a)
+	ic.dimmed = a < 1 -- (tests and the self-test read this)
+end
+
+function GH:MapAfkRefresh()
+	for name, ic in pairs(self.mapIcons) do DimAfk(name, ic) end
 end
 
 ------------------------------------------------------------------------
@@ -145,6 +298,7 @@ function GH:MapDotChanged(name)
 	local r, g, b = ClassColor(ClassOf(name, p))
 	ic.world.tex:SetVertexColor(r, g, b)
 	ic.mini.tex:SetVertexColor(r, g, b)
+	DimAfk(name, ic)
 	pcall(P.AddWorldMapIconMap, P, REF, ic.world, p.m, p.x, p.y, HBD_PINS_WORLDMAP_SHOW_PARENT or 1)
 	if self.db.profile.mapMinimap then
 		pcall(P.AddMinimapIconMap, P, REF, ic.mini, p.m, p.x, p.y, true, false)
@@ -237,7 +391,30 @@ local function Label()
 		f.text:SetPoint("CENTER")
 		f.text:SetShadowOffset(1, -1)
 	end
+	f:SetSize(160, 16)
+	if f.icon then f.icon:Hide() end
+	f.dungeon = nil
 	f:EnableMouse(false)
+	return f
+end
+
+-- 0.6.0: a dungeon label = a label with Blizzard's dungeon / raid icon in front (text only without it).
+local function DungeonLabel(text, raid)
+	local f = Label()
+	f:SetSize(240, 16)
+	f.text:SetText(text)
+	local atlas = W.DungeonIconArt(raid and "raid" or "dungeon")
+	if atlas then
+		if not f.icon then
+			f.icon = f:CreateTexture(nil, "ARTWORK")
+			f.icon:SetSize(14, 14)
+		end
+		f.icon:ClearAllPoints()
+		f.icon:SetPoint("RIGHT", f.text, "LEFT", -2, 0)
+		f.icon:SetAtlas(atlas)
+		f.icon:Show()
+	end
+	f.dungeon = true
 	return f
 end
 
@@ -301,6 +478,26 @@ function GH:MapLabelsTick()
 			if pcall(P.AddWorldMapIconMap, P, REF, f, e.id, 0.5, 0.04, 0) then self.mapLabels[#self.mapLabels + 1] = f end
 		end
 	end
+	-- 0.6.0 dungeon labels at the entrance (zone map + continent); a second door only on its zone map
+	if self.DungeonCounts then
+		local showCont = HBD_PINS_WORLDMAP_SHOW_CONTINENT or 2
+		for d, c in pairs(self:DungeonCounts()) do
+			local text = self:DungeonLabelText(d, c)
+			local f = DungeonLabel(text, d.raid)
+			if pcall(P.AddWorldMapIconMap, P, REF, f, d.m, d.x, d.y, showCont) then self.mapLabels[#self.mapLabels + 1] = f end
+			if d.also then
+				local f2 = DungeonLabel(text, d.raid)
+				if pcall(P.AddWorldMapIconMap, P, REF, f2, d.also.m, d.also.x, d.also.y, 0) then self.mapLabels[#self.mapLabels + 1] = f2 end
+			end
+		end
+	end
+end
+
+-- Dungeon labels on the map now (self-test).
+function GH:MapDungeonLabelCount()
+	local n = 0
+	for _, f in ipairs(self.mapLabels) do if f.dungeon then n = n + 1 end end
+	return n
 end
 
 function GH:MapZoneCountsDirty()
@@ -319,11 +516,15 @@ function GH:TestMap()
 	for _, e in ipairs(fake) do
 		self.testPositions[e[1]] = { m = m, x = math.min(1, math.max(0, x + e[3])), y = math.min(1, math.max(0, y + e[4])), t = GetTime(), test = true, class = e[2] }
 	end
+	-- 0.6.0: a made-up dungeon label count near you, and the first test dot pulses ("Find me")
+	self.testDungeon = self.TestDungeonSpot and self:TestDungeonSpot(m) or nil
 	self:MapRedraw()
+	self:MapPulse(fake[1][1])
 	self:Msg(L.TEST_MAP_ON, TEST_SECONDS)
 	if self.testMapTimer then self:CancelTimer(self.testMapTimer) end
 	self.testMapTimer = self:ScheduleTimer(function()
 		GH.testMapTimer = nil
+		GH.testDungeon = nil
 		wipe(GH.testPositions)
 		GH:MapRedraw()
 	end, TEST_SECONDS)
@@ -397,7 +598,8 @@ local function HasPositions(t, depth, seen, budget)
 	if type(t) ~= "table" or depth > 7 or seen[t] or budget[1] <= 0 then return false end
 	seen[t] = true
 	budget[1] = budget[1] - 1
-	if rawget(t, "positions") ~= nil or rawget(t, "testPositions") ~= nil then return true end
+	-- (members' "lastSeen" is a plain time stamp, not a place: not checked)
+	if rawget(t, "positions") ~= nil or rawget(t, "testPositions") ~= nil or rawget(t, "findStats") ~= nil then return true end
 	local m, x, y = rawget(t, "m"), rawget(t, "x"), rawget(t, "y")
 	if type(m) == "number" and type(x) == "number" and type(y) == "number" and x <= 1 and y <= 1 then return true end
 	for _, v in pairs(t) do
@@ -406,6 +608,8 @@ local function HasPositions(t, depth, seen, budget)
 	return false
 end
 GH.MapHasSavedPositions = function(t) return HasPositions(t, 0, {}, { 20000 }) end
+
+local testRingDot -- the self-test's hidden dot for the ring check
 
 function GH:MapSelfTest(api)
 	api.Count(3)
@@ -420,4 +624,23 @@ function GH:MapSelfTest(api)
 	api.Count()
 	local ok = pcall(self.IsIgnored, self, self:MyName())
 	if not ok then api.Problem("MAP", "ignore", "the ignore check failed") end
+	-- 0.6.0: the own entrance table against this game's REAL maps (every spot an open-world zone)
+	if self.CheckEntrances then
+		api.Count()
+		local good, total, bad = self:CheckEntrances()
+		if #bad > 0 then api.Problem("MAP", "entrances", table.concat(bad, ",", 1, math.min(#bad, 6))) end
+		-- the Find me ring: built on a hidden test dot, it must have art
+		api.Count()
+		local okR, ring = pcall(function()
+			testRingDot = testRingDot or CreateFrame("Frame", nil, UIParent) -- one hidden frame, reused
+			testRingDot:Hide()
+			return Ring(testRingDot)
+		end)
+		if not okR or not (ring and ring.tex) then api.Problem("MAP", "pulse", "the Find me ring failed") end
+		local fs, st = self.findStats, self.posStats
+		api.Info(("map extras: entrances %d/%d, afk-hide %s (sent while afk %d), find sent %d got %d lines %d, pulses %d, ping art %s, dlabels %d, dungeon art %s"):format(
+			good, total, self.db.profile.mapHideAfk ~= false and "y" or "n", st.inAfk, fs.sent, fs.got, fs.lines,
+			self.pulseCount, okR and ring and ring.art or "-", self:MapDungeonLabelCount(),
+			W.DungeonIconArt("dungeon") and "y" or "n"))
+	end
 end

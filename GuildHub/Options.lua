@@ -143,6 +143,25 @@ local function AddShareOptions(args)
 		set = function(_, v) GH.db.profile.mapMinimap = v and true or false; GH:MapRedraw() end,
 		disabled = function() return not GH:FeatureOn("map") end,
 	}
+	-- 0.6.0 map extras
+	args.mapHideAfk = {
+		type = "toggle", order = 19.54, width = "full",
+		name = L.OPT_MAP_AFK, desc = L.OPT_MAP_AFK_DESC,
+		get = function() return GH.db.profile.mapHideAfk ~= false end,
+		set = function(_, v)
+			GH.db.profile.mapHideAfk = v and true or false
+			if GH:PosAfkHidden() then GH:SendPosOff() else GH:PosTick() end
+			GH:UpdateFindButton()
+		end,
+		disabled = function() return not GH:FeatureOn("map") end,
+	}
+	args.mapFindLines = {
+		type = "toggle", order = 19.55, width = "full",
+		name = L.OPT_MAP_FINDLINES, desc = L.OPT_MAP_FINDLINES_DESC,
+		get = function() return GH.db.profile.mapFindLines ~= false end,
+		set = function(_, v) GH.db.profile.mapFindLines = v and true or false end,
+		disabled = function() return not GH:FeatureOn("map") end,
+	}
 end
 
 local function BuildOptions()

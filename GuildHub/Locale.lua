@@ -261,8 +261,9 @@ L.TEST_UI2          = "next betas: name menu %s · filter button %s · atlas Dun
 L.CARD_BRAND        = "Guild Hub"
 L.CARD_MAP_TITLE    = "Show yourself on the guild map?"
 L.CARD_MAP_BODY     = "Guildmates with Guild Hub who share their position too can see your dot on their world map and minimap. Your position is only shared out in the world (never in dungeons, raids or battlegrounds), never saved, and only while you are online.\n\nFair trade: you see their dots only while you share yours. If you don't share, guildmates only see your zone in Blizzard's own guild list, as now."
-L.CARD_MAP_NOTE     = "You can change this any time in Settings > What I share. \"Not now\" asks again next time you log in."
+L.CARD_MAP_NOTE     = "\"Zone only\" is a lasting no: guildmates only see your zone in the guild list, and this card stops asking. You can change it any time in Settings > What I share. \"Not now\" asks again next time you log in."
 L.CARD_MAP_SHARE    = "Share my position"
+L.CARD_MAP_ZONE     = "Zone only"
 L.CARD_MAP_NOTNOW   = "Not now"
 
 L.FAIR_TRIAL        = "Trial accounts can't share, so these features are locked."
@@ -274,7 +275,7 @@ L.OPT_SHARE_HDR     = "What I share"
 L.OPT_SHARE_INFO    = "What guildmates with Guild Hub can see about you. Fair trade: what you don't share, you can't see from others either. Nothing here is sent outside your guild."
 L.OPT_SHARE_OFFNOTE = " |cff999999(off = you also can't see others')|r"
 L.OPT_SHARE_FEATOFF = "This part of Guild Hub is switched off (Features below)."
-L.OPT_SHAREPOS      = "My position on guildmates' maps"
+L.OPT_SHAREPOS      = "My exact position on guildmates' maps (off = zone only)"
 L.OPT_SHAREPOS_DESC = "Your dot on the world map and minimap of guildmates who share too. Only out in the world (never in dungeons, raids or battlegrounds), at most every 12 seconds and only when you move, never saved. Off: guildmates only see your zone in Blizzard's guild list, and you see no dots either (zone counts stay)."
 L.OPT_MAP_HDR       = "Guild map"
 L.OPT_MAP_MINIMAP   = "Guild dots on the minimap"
@@ -289,6 +290,37 @@ L.MAP_ZONE_COUNT    = "%s %d"
 L.MAP_ZONE_HERE     = "Guild: %d here"
 L.MAP_ZONE_EXACT    = " · %d share their exact position"
 L.MAP_ZONE_SHARE_HINT = " · share your position to see guildmates' dots"
+
+-- 0.6.0 map extras (plans\map-extras)
+L.TIP_DOT_AFK       = " |cff999999(AFK)|r"
+L.TIP_DOT_ALSO      = "Also here: %s"
+L.TIP_DOT_MORE      = " and %d more"
+L.MAP_DUNGEON_ONE   = "%s %d"
+L.MAP_DUNGEON_MANY  = "%s: %s"
+L.MAP_SPOT          = { BRM = "Blackrock Mountain", AQ = "Ahn'Qiraj" }
+L.OPT_MAP_AFK       = "Hide my dot while AFK"
+L.OPT_MAP_AFK_DESC  = "While you are AFK, your dot disappears from guildmates' maps and comes back when you return."
+L.OPT_MAP_FINDLINES = "Show Find me lines in chat"
+L.OPT_MAP_FINDLINES_DESC = "When a guildmate clicks Find me, their dot pulses on your map. With this on you also get one line in your chat (at most one per guildmate every 2 minutes). Mute someone to stop both."
+L.FIND_BUTTON       = "Find me"
+L.FIND_TIP          = "Your dot pulses on the maps of guildmates who share their position, and they get one chat line. At most once every 30 seconds."
+L.FIND_TIP_NO       = "Can't use Find me now: %s"
+L.FIND_SENT         = "Find me sent: your dot pulses on guildmates' maps."
+L.FIND_NOT          = "Find me: %s"
+L.FIND_WHY = {
+	feature  = "the guild map is switched off.",
+	trial    = "trial accounts can't share.",
+	share    = "share your exact position first (Settings > What I share).",
+	instance = "not in dungeons, raids or battlegrounds.",
+	lockdown = "addon messages are paused right now (boss fight or match).",
+	combat   = "not in combat.",
+	afk      = "you are AFK (your dot is hidden).",
+	wait     = "wait %d s (once every 30 seconds).",
+	nopos    = "Guild Hub can't read your position here.",
+}
+L.FIND_LINE         = "%s wants to be found: %s (open your map)."
+L.FIND_LINE_NOZONE  = "%s wants to be found (open your map)."
+L.HELP_FINDME       = "  /ghub findme - your dot pulses on guildmates' maps (only while you share your position; once every 30 s)"
 
 L.HELP_TESTMAP      = "  /ghub test map - three made-up guildmates around you for 60 s (only on your screen, nothing sent)"
 L.TEST_MAP_ON       = "test map: three made-up guildmates around you for %d s (only on your screen, nothing is sent). Open the world map and look at the minimap."

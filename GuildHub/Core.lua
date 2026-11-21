@@ -160,6 +160,8 @@ function GH:OnSlash(input)
 		self:TestApi() -- ApiTest.lua
 	elseif cmd == "test" and rest == "map" then
 		self:TestMap() -- UI\MapPins.lua
+	elseif cmd == "findme" then
+		self:FindMe() -- Features\Map.lua (click only: a typed command or a macro the player presses)
 	elseif cmd == "test" and rest:match("^post") and self.TestPost then
 		self:TestPost(rest:match("^post%s*(.*)$")) -- Features\Recruit.lua
 	elseif cmd == "ad" and self.PostAd then
@@ -183,6 +185,7 @@ function GH:OnSlash(input)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_TEST3)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_TEST4)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_TESTAPI)
+		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_FINDME)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_TESTMAP)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_RECRUIT)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_AD)

@@ -8,6 +8,7 @@
 --  * Officer data: name, a fixed status word, the date and who set it. No free text. Deleted after
 --    30 days. Never on GUILD: ROFF only on OFFICER, RODQ/RODS only by whisper between officers.
 --    The officer rank is checked when we send (gate) and when we receive (our own guild list).
+--    A catch-up ask (RODQ) is answered at most once per ASK_GAP s and ASK_HOUR times an hour per officer.
 --  * Wiped from this computer when we are no longer an officer.
 --  * Invite = one click = one C_GuildInfo.Invite. Caps first: 1 per player per 7 days, 10 per hour
 --    (per account, failed tries count), never someone on Don't invite. Blocked by the game =
@@ -32,6 +33,8 @@ local INVITE_WATCH = 3     -- seconds a blocked-call event still belongs to our 
 local ASK_DELAY = 20       -- seconds after the guild list is ready before we ask for the lists
 local AHEAD_OK = 30        -- a received time may be this far ahead (quick edits go 1 s ahead each)
 local SYNC_PAGES = 6       -- catch-up pages asked for in one session (RODQ p = 1; the answer says m = 1 when there is more)
+local ASK_GAP = 50         -- beta.5 tos fix: a second RODQ from the same officer sooner than this gets no answer
+local ASK_HOUR = 8         -- and at most this many answers to one officer in any 60 minutes (6 pages + 2 for a reload)
 GH.RECRUIT_AHEAD_OK = AHEAD_OK
 
 -- R3: Suggestions (from members, RSUG) and Trials (guild members on trial: an end date and a
@@ -62,11 +65,13 @@ GH.RECRUIT_STATUSES = STATUSES
 GH.RECRUIT_OFF_CAPS = { INVITE_TARGET_DAYS = INVITE_TARGET_DAYS, INVITE_PER_HOUR = INVITE_PER_HOUR,
 	OUTSIDER_DAYS = OUTSIDER_DAYS, PROS_MAX = PROS_MAX, DNI_MAX = DNI_MAX, SYNC_MAX = SYNC_MAX,
 	SUG_MAX = SUG_MAX, TRIAL_MAX = TRIAL_MAX, TRIAL_LONGEST = TRIAL_LONGEST, TRIAL_AFTER = TRIAL_AFTER,
-	BUD_MAX = BUD_MAX, BUD_KEEP = BUD_KEEP, AHEAD_OK = AHEAD_OK, SYNC_PAGES = SYNC_PAGES }
+	BUD_MAX = BUD_MAX, BUD_KEEP = BUD_KEEP, AHEAD_OK = AHEAD_OK, SYNC_PAGES = SYNC_PAGES,
+	ASK_GAP = ASK_GAP, ASK_HOUR = ASK_HOUR }
 GH.RECRUIT_TRIAL_DAYS = TRIAL_DAYS
 GH.RECRUIT_CLASS_OK, GH.RECRUIT_ROLE_OK = CLASS_OK, ROLE_OK
 GH.RECRUIT_MENU_TAGS = MENU_TAGS
-GH.offStats = { roff = 0, rods = 0, dropped = 0, menuHooks = 0, invites = 0, fallback = 0 }
+GH.offStats = { roff = 0, rods = 0, dropped = 0, menuHooks = 0, invites = 0, fallback = 0, askSkipped = 0 }
+GH.offAskSeen = {} -- [officer] = { GetTime() of each RODS answer sent to them in the last hour } (session only)
 
 local function Now() return U.Now() end
 local function On() return GH:FeatureOn("recruit") end
@@ -447,9 +452,28 @@ end
 local function HandleAsk(self, sender, data, distribution, isSelf)
 	if isSelf or distribution ~= "WHISPER" or not On() then return end
 	if not IAmOfficer() or not self:IsOfficer(sender) then self.offStats.dropped = self.offStats.dropped + 1 return end
+	-- beta.5 tos fix: the 60 s RODQ gap is only on the asking side, so limit the answers here too
+	-- (normal asks come >= 60 s apart and at most SYNC_PAGES per session)
+	local now = GetTime()
+	local seen = self.offAskSeen[sender]
+	if seen then
+		local keep = {}
+		for _, t in ipairs(seen) do if now - t < 3600 then keep[#keep + 1] = t end end
+		seen = #keep > 0 and keep or nil
+		self.offAskSeen[sender] = seen
+	end
+	if seen and (now - seen[#seen] < ASK_GAP or #seen >= ASK_HOUR) then
+		self.offStats.askSkipped = self.offStats.askSkipped + 1
+		return
+	end
 	local paged = type(data) == "table" and data.p == 1
 	local rows, more = self:OffSyncRows(type(data) == "table" and data.since, paged)
-	if #rows > 0 then self:SendMsg("RODS", { r = rows, m = (paged and more) and 1 or nil }, sender) end
+	if #rows > 0 then
+		seen = seen or {}
+		seen[#seen + 1] = now
+		self.offAskSeen[sender] = seen
+		self:SendMsg("RODS", { r = rows, m = (paged and more) and 1 or nil }, sender)
+	end
 end
 
 -- The next page of a catch-up: only from the ONE officer we asked, only while it says there is more,
@@ -772,7 +796,8 @@ end
 
 -- Self-test part (called by the recruit feature's selftest).
 local EXPECT = { INVITE_TARGET_DAYS = 7, INVITE_PER_HOUR = 10, OUTSIDER_DAYS = 30, PROS_MAX = 150, DNI_MAX = 200, SYNC_MAX = 300,
-	SUG_MAX = 100, TRIAL_MAX = 50, TRIAL_LONGEST = 30, TRIAL_AFTER = 14, AHEAD_OK = 30, SYNC_PAGES = 6 }
+	SUG_MAX = 100, TRIAL_MAX = 50, TRIAL_LONGEST = 30, TRIAL_AFTER = 14, AHEAD_OK = 30, SYNC_PAGES = 6,
+	ASK_GAP = 50, ASK_HOUR = 8 }
 function GH:RecruitOffSelfTest(api)
 	api.Count()
 	for k, v in pairs(EXPECT) do

@@ -486,6 +486,35 @@ function GH:BuildOwnPanel(parent)
 	tab.autoAct = W.Text(panel, "GameFontHighlightSmall")
 	tab.autoAct:SetPoint("TOPLEFT", 14, -246)
 	tab.autoAct:SetWidth(206)
+
+	-- 0.6.0 "Find me" (Features\Map.lua): click only; greyed with the reason in its tooltip
+	local find = W.Button(panel, L.FIND_BUTTON, 100, 22)
+	find:SetPoint("BOTTOMLEFT", 12, 12)
+	if find.SetMotionScriptsWhileDisabled then find:SetMotionScriptsWhileDisabled(true) end
+	find:SetScript("OnClick", function() GH:FindMe() end)
+	find:SetScript("OnEnter", function(s)
+		GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+		GameTooltip:AddLine(L.FIND_BUTTON, 1, 0.82, 0)
+		GameTooltip:AddLine(L.FIND_TIP, 1, 1, 1, true)
+		local ok, why, left = GH:FindMeState()
+		if not ok then GameTooltip:AddLine(L.FIND_TIP_NO:format((L.FIND_WHY[why] or why):format(left or 0)), 1, 0.3, 0.3, true) end
+		GameTooltip:Show()
+	end)
+	find:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	tab.findMe = find
+	self:UpdateFindButton()
+end
+
+-- The Find me button: hidden while the map feature is off, greyed while it can't be used.
+function GH:UpdateFindButton()
+	local tab = self.statusTab
+	local b = tab and tab.findMe
+	if not b then return end
+	b:SetShown(self:FeatureOn("map"))
+	local ok = self:FindMeState()
+	b:SetEnabled(ok and true or false)
+	b:SetGreyed(not ok)
+	if b.plain then b:SetAlpha(ok and 1 or 0.45) end
 end
 
 local function DungeonLabel(i)
@@ -607,6 +636,7 @@ function GH:UpdateOwnPanel(resetNote)
 	else
 		tab.autoAct:SetText(L.AUTO_ACT_FMT:format(own.a and L.ACT[own.a] or L.AUTO_ACT_NONE))
 	end
+	self:UpdateFindButton()
 end
 
 -- "Press Enter to share" while the note box holds text that isn't shared yet.

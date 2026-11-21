@@ -306,6 +306,8 @@ function ST.MainParts()
         { name = "status.lfgOnly", obj = t.compact },
         { name = "status.list", obj = t.listInset },
         { name = "status.panel", obj = t.panel },
+        -- 0.6.0 Find me (hidden while the map feature is off)
+        { name = "status.findMe", obj = t.findMe, opt = not GH:FeatureOn("map"), shownOnly = not GH:FeatureOn("map") },
     }
 end
 
@@ -703,7 +705,9 @@ local function CheckCard()
     if f and f:IsShown() then return CheckGroup(GH:CardParts(), nil) end
     f = GH:CardFrame()
     GH:FillCard(f, { test = true, title = "Self-test card", text = "This card is a self-test. It closes by itself.",
-        note = "Nothing is saved.", buttons = { { label = "First" }, { label = "Second" } } })
+        -- 0.6.0: three buttons, laid out like the map card's (Share / Zone only / Not now)
+        note = "Nothing is saved.", buttons = { { label = "First button", width = 140 }, { label = "Second", width = 106 },
+            { label = "Third", width = 106 } } })
     f:Show()
     local ok, err = pcall(CheckGroup, GH:CardParts(), nil)
     f:Hide()
