@@ -40,7 +40,7 @@ end
 GH.positions = {}  -- [name] = { m, x, y, t } other players' dots: memory only, never saved
 GH.posStats = { sent = 0, offSent = 0, beforeYes = 0, inInstance = 0, inCombat = 0, inAfk = 0, minGap = nil, last = nil }
 -- Find me (self-test): sent / sent without sharing / smallest gap; got = pulses received, lines = chat lines shown
-GH.findStats = { sent = 0, noShare = 0, minGap = nil, last = nil, got = 0, lines = 0 }
+GH.findStats = { sent = 0, noShare = 0, minGap = nil, last = nil, got = 0, lines = 0, pulseDropped = 0 }
 local SHARE = { ask = true, yes = true, no = true }
 
 ------------------------------------------------------------------------
@@ -130,7 +130,8 @@ end
 -- 0.6.0: AFK with "Hide my dot while AFK" on (the default).
 function GH:PosAfkHidden()
 	local p = self.db and self.db.profile
-	return p ~= nil and p.mapHideAfk ~= false and UnitIsAFK ~= nil and UnitIsAFK("player") and true or false
+	if p == nil or p.mapHideAfk == false then return false end
+	return self:PlayerAFK() -- secret-safe: unknown = not AFK (Status.lua)
 end
 
 -- Not in an instance, no lockdown, no combat, not hidden while AFK. Returns ok, why.
@@ -288,7 +289,9 @@ function GH:FindMe()
 end
 
 -- Receiver: a guildmate asked to be found. Only called for a dot we keep (fair trade, not ignored).
-local findLineAt, findWaiting = {}, {}
+local findLineAt, findWaiting, pulseAt = {}, {}, {}
+local PULSE_GAP = 25 -- seconds: receiver-side pulse limit per sender (0.6.0 fix)
+GH.MAP_PULSE_GAP = PULSE_GAP
 
 local function FindLine(gh, sender)
 	local now = GetTime()
@@ -307,7 +310,17 @@ function GH:MapFindMe(sender)
 	if self:IsMuted(sender) then return end -- tos (b): the mute stops the line and the pulse
 	self.findStats.got = self.findStats.got + 1
 	local inCombat = InCombatLockdown and InCombatLockdown()
-	if not inCombat and self.MapPulse then self:MapPulse(sender) end
+	if not inCombat and self.MapPulse then
+		-- receiver's own limit: one pulse per sender per 25 s (an honest sender sends at most one per
+		-- 30 s; 5 s slack for a late first message). Only a pulse that really plays counts.
+		local now = GetTime()
+		if pulseAt[sender] and now - pulseAt[sender] < PULSE_GAP then
+			self.findStats.pulseDropped = self.findStats.pulseDropped + 1
+		else
+			pulseAt[sender] = now
+			self:MapPulse(sender)
+		end
+	end
 	if self.db.profile.mapFindLines == false then return end
 	if inCombat then findWaiting[sender] = GetTime() return end
 	FindLine(self, sender)
@@ -508,6 +521,7 @@ GH:RegisterFeature({
 		if had and gh.started then gh:SendMsg("HB", gh:SelfInfo()) end
 		wipe(gh.positions)
 		wipe(findWaiting)
+		wipe(pulseAt)
 		if gh.MapPinsDisable then gh:MapPinsDisable() end
 	end,
 	selftest = function(api)

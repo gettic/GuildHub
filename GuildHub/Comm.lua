@@ -412,7 +412,7 @@ function GH:SelfInfo()
 		v = self.VERSION,
 		class = m and m.class, level = m and m.level, ts = m and m.ts,
 		inst = IsInInstance() and true or false,
-		afk = UnitIsAFK("player") and true or false,
+		afk = self:PlayerAFK(), -- secret-safe (Status.lua)
 		g = g, r = r and 1 or nil,
 		-- 0.4.0-b2: "my map dot is still where it was" (Features\Map.lua); only through the same gate
 		-- as POS itself (after the yes, out in the world, no lockdown)

@@ -40,7 +40,8 @@ function GH:RebuildRoster()
 			roster[name] = {
 				rankIndex = rankIndex, rankName = U.CleanText(rankName, 30), -- CleanText skips secret values
 				level = level, class = class,
-				zone = zone, online = isOnline and true or false, afk = status == 1,
+				zone = zone, online = isOnline and true or false,
+				afk = not U.IsSecret(status) and status == 1, -- 0.6.0: a secret flag is never compared (= not AFK)
 				idx = i, -- the guild list index (R6 last online; checked against the name before use)
 			}
 			if isOnline then

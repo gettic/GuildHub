@@ -99,6 +99,11 @@ end
 ------------------------------------------------------------------------
 local STACK_PX, STACK_MAX = 10, 5
 
+-- A guildmate's AFK flag from the guild list (Roster.lua), never tested when it is a secret value.
+local function RosterAfk(r)
+	return r ~= nil and not U.IsSecret(r.afk) and r.afk == true
+end
+
 -- Other dots of the same kind (world / minimap) within STACK_PX screen pixels of this one: only dots
 -- already on this player's map (tos 4: "Also here" names only dots the receiver already sees).
 local function DotsNear(owner)
@@ -134,7 +139,7 @@ function GH:DotTooltip(owner)
 	GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
 	local r = self.roster[name]
 	local class = ClassOf(name, p)
-	GameTooltip:AddLine(U.ClassColored(name, class) .. ((r and r.afk) and L.TIP_DOT_AFK or ""))
+	GameTooltip:AddLine(U.ClassColored(name, class) .. (RosterAfk(r) and L.TIP_DOT_AFK or ""))
 	local parts = {}
 	if r and r.level then parts[#parts + 1] = L.TIP_DOT_LEVEL:format(tostring(r.level)) end
 	local cname = class and type(LOCALIZED_CLASS_NAMES_MALE) == "table" and LOCALIZED_CLASS_NAMES_MALE[class]
@@ -259,7 +264,7 @@ end
 local AFK_ALPHA = 0.5
 local function DimAfk(name, ic)
 	local r = GH.roster[name]
-	local a = (r and r.afk and not GH.testPositions[name]) and AFK_ALPHA or 1
+	local a = (RosterAfk(r) and not GH.testPositions[name]) and AFK_ALPHA or 1
 	ic.world:SetAlpha(a)
 	ic.mini:SetAlpha(a)
 	ic.dimmed = a < 1 -- (tests and the self-test read this)
@@ -638,9 +643,9 @@ function GH:MapSelfTest(api)
 		end)
 		if not okR or not (ring and ring.tex) then api.Problem("MAP", "pulse", "the Find me ring failed") end
 		local fs, st = self.findStats, self.posStats
-		api.Info(("map extras: entrances %d/%d, afk-hide %s (sent while afk %d), find sent %d got %d lines %d, pulses %d, ping art %s, dlabels %d, dungeon art %s"):format(
-			good, total, self.db.profile.mapHideAfk ~= false and "y" or "n", st.inAfk, fs.sent, fs.got, fs.lines,
-			self.pulseCount, okR and ring and ring.art or "-", self:MapDungeonLabelCount(),
+		api.Info(("map extras: entrances %d/%d, afk-hide %s (sent while afk %d, afk unknown %d), find sent %d got %d lines %d, pulses %d dropped %d, ping art %s, dlabels %d, dungeon art %s"):format(
+			good, total, self.db.profile.mapHideAfk ~= false and "y" or "n", st.inAfk, self.afkUnknown or 0, fs.sent, fs.got, fs.lines,
+			self.pulseCount, fs.pulseDropped or 0, okR and ring and ring.art or "-", self:MapDungeonLabelCount(),
 			W.DungeonIconArt("dungeon") and "y" or "n"))
 	end
 end

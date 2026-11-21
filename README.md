@@ -75,7 +75,7 @@ Guildmates who share their position show as class-coloured dots on the world map
 
 **Dungeon labels.** On the world map, dungeon entrances show how many online guildmates are inside, for example "The Deadmines 2". Blackrock Mountain has one combined label, such as "Blackrock Mountain: BRD 2 · MC 5". Only numbers show, never names. The counts come from the guild list and from statuses, and nothing is sent for them.
 
-**Find me.** Lost your guildmates, or want them to spot you? Click the "Find me" button on the Status tab, or type `/ghub findme`. Your dot pulses on the maps of guildmates who share their position, and they get one chat line. It works only while you share your exact position, and at most once every 30 seconds. Turn the chat line off with "Show Find me lines in chat" in Settings > Guild map. Muting someone stops their pulses and lines.
+**Find me.** Lost your guildmates, or want them to spot you? Click the "Find me" button on the Status tab, or type `/ghub findme`. Your dot pulses on the maps of guildmates who share their position, and they get one chat line. It works only while you share your exact position, and at most once every 30 seconds. On the receiving side, one guildmate's pulse shows at most once every 25 seconds. Turn the chat line off with "Show Find me lines in chat" in Settings > Guild map. Muting someone stops their pulses and lines.
 
 **Sharing your position.** The first time on each character, a small "Guild Hub" card asks: "Share my position", "Zone only" or "Not now". "Zone only" is a lasting no: guildmates see only your zone in the guild list, and the card stops asking. "Not now" asks again next login. Turning it off in Settings > What I share is also a real no. Your position is:
 

@@ -14,6 +14,11 @@ local ROW_Y = { size = -40, days = -74, at = -108, tz = -142, loot = -176, style
 
 local function SetColor(fs, c) fs:SetTextColor(c[1], c[2], c[3]) end
 
+-- The draft's fields, or nil. The page is built (and the game's dropdowns run their menu with its
+-- "is this one picked" checks right away, in SetupMenu) before ResetDraft makes the draft (0.5.0 bug).
+local function Fields(t) return t.draft and t.draft.f end
+local NONE = {}
+
 local function Changed(t)
 	t.dirty = true
 	GH:DrawRecruitPage()
@@ -48,7 +53,9 @@ local function Choice(t, body, key, label)
 	lbl:SetWidth(LABEL_W)
 	local function Set(v)
 		if key == "tz" and v == "st" then v = nil end -- server time is the default (saved as nothing)
-		t.draft.f[key] = v
+		local f = Fields(t)
+		if not f then return end
+		f[key] = v
 		Changed(t)
 	end
 	local list = Values(key)
@@ -62,18 +69,20 @@ local function Choice(t, body, key, label)
 				end
 			end
 			if key ~= "tz" then
-				root:CreateRadio(ValueText(key, nil), function() return t.draft.f[key] == nil end, function() Set(nil) end)
+				root:CreateRadio(ValueText(key, nil), function() return (Fields(t) or NONE)[key] == nil end, function() Set(nil) end)
 			end
 			for _, v in ipairs(list) do
 				root:CreateRadio(ValueText(key, v), function()
-					return t.draft.f[key] == v or (key == "tz" and v == "st" and t.draft.f.tz == nil)
+					local f = Fields(t) or NONE
+					return f[key] == v or (key == "tz" and v == "st" and f.tz == nil)
 				end, function() Set(v) end)
 			end
 		end)
 	else
 		dd = W.Button(body, "", 160, 22)
 		dd:SetScript("OnClick", function()
-			local cur, nextV = t.draft.f[key], nil
+			if not Fields(t) then return end
+			local cur, nextV = Fields(t)[key], nil
 			if key == "tz" and cur == nil then cur = "st" end
 			if cur == nil then nextV = list[1]
 			else
@@ -108,7 +117,9 @@ function GH:BuildAdPage(t, area)
 		local b = W.Button(body, L.ADB_SIZE_V:format(n), 76, 22)
 		b:SetPoint("TOPLEFT", CTRL_X + (i - 1) * 80, ROW_Y.size)
 		b:SetScript("OnClick", function()
-			t.draft.f.size = (t.draft.f.size ~= n) and n or nil
+			local f = Fields(t)
+			if not f then return end
+			f.size = (f.size ~= n) and n or nil
 			Changed(t)
 		end)
 		a.sizes[i] = b
@@ -121,10 +132,12 @@ function GH:BuildAdPage(t, area)
 		local b = W.Button(body, L.ADB_DAY[i], 40, 22)
 		b:SetPoint("TOPLEFT", CTRL_X + (i - 1) * 42, ROW_Y.days)
 		b:SetScript("OnClick", function()
-			local d = t.draft.f.days or 0
+			local f = Fields(t)
+			if not f then return end
+			local d = f.days or 0
 			local bit = 2 ^ (i - 1)
 			d = GH.AdHasDay(d, i) and (d - bit) or (d + bit)
-			t.draft.f.days = d > 0 and d or nil
+			f.days = d > 0 and d or nil
 			Changed(t)
 		end)
 		a.days[i] = b

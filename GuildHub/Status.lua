@@ -422,9 +422,33 @@ end
 ------------------------------------------------------------------------
 -- Automatic activity (own character only; nothing is read in combat)
 ------------------------------------------------------------------------
+-- Own AFK flag, secret-safe (0.6.0). Forever's API docs (UnitDocumentation.lua) mark UnitIsAFK
+-- "SecretInChatMessagingLockdown": during a boss fight / PvP match it is a secret boolean (seen in
+-- game: "attempt to perform boolean test on a secret boolean value"). So: in lockdown we don't read
+-- it at all; a secret or an error is never tested. Both give the last value read outside lockdown
+-- (start: not AFK), counted in GH.afkUnknown (map self-test info line). Outside lockdown the real
+-- flag is read again, so hide-while-AFK and the AFK status work as soon as the lockdown ends.
+-- (CHAT_MSG_AFK / CHAT_MSG_SYSTEM are secret in lockdown too, so they are no better.)
+GH.afkUnknown = 0
+local afkLast = false
+function GH:PlayerAFK()
+	if not UnitIsAFK then return false end
+	if self.InLockdown and self:InLockdown() then
+		self.afkUnknown = self.afkUnknown + 1
+		return afkLast
+	end
+	local ok, afk = pcall(UnitIsAFK, "player")
+	if not ok or U.IsSecret(afk) then
+		self.afkUnknown = self.afkUnknown + 1
+		return afkLast
+	end
+	afkLast = afk and true or false
+	return afkLast
+end
+
 function GH:DetectActivity()
 	if not self.db.profile.autoActivity then return nil end
-	if UnitIsAFK("player") then return "afk" end
+	if self:PlayerAFK() then return "afk" end
 	local inInst, itype = IsInInstance()
 	if inInst then
 		if itype == "raid" then return "raid" end
