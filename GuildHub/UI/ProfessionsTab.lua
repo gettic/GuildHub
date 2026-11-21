@@ -57,6 +57,11 @@ local function SetupRow(r)
 	r.request:SetScript("OnClick", function(self) if r.data and r.data.recipe then GH:ShowRequestPopup(r.data, self) end end)
 	r:SetScript("OnEnter", function(self) GH:ProfRowTooltip(self, self.data) end)
 	r:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	-- 0.6.0-beta.3: right-click a crafter (directory row) = the name menu (UI\NameMenu.lua)
+	GH:NameMenuOnRow(r, function(s)
+		local d = s.data
+		return d and not d.header and not d.recipe and d.name or nil
+	end, "prof")
 end
 
 local DIR_PARTS = { "name", "prof", "skill", "spec", "recipes", "seen" }
@@ -305,11 +310,9 @@ function GH:BuildProfessionsTab(page)
 	self.profTab = tab
 	local db = self.db.profile
 
-	-- toolbar in the tab row (right of the last tab), like the Status page
+	-- toolbar strip at the top of the page, above the list (0.6.0-beta.3: out of the tab row)
 	local search = W.EditBox(page, 260, 22, 40, L.PROF_SEARCH_HINT, "search")
-	local lastTab = self.mainFrame and self.mainFrame.lastTab
-	if lastTab then search:SetPoint("BOTTOMLEFT", lastTab, "BOTTOMRIGHT", 24, 4)
-	else search:SetPoint("BOTTOMLEFT", page, "TOPLEFT", 220, 4) end
+	search:SetPoint("TOPLEFT", page, "TOPLEFT", search.ghTemplate and 12 or 6, -3)
 	search:HookScript("OnEnterPressed", function(s) s:ClearFocus() end)
 	search:HookScript("OnEscapePressed", function(s) s:SetText(""); s:ClearFocus(); GH:DrawProfessionsTab(true) end)
 	search:HookScript("OnTextChanged", function() GH:WantRecipeLists(); GH:DrawProfessionsTab(true) end)
@@ -328,7 +331,7 @@ function GH:BuildProfessionsTab(page)
 
 	-- list inset with column titles
 	local inset = W.Inset(page)
-	inset:SetPoint("TOPLEFT", 2, 0)
+	inset:SetPoint("TOPLEFT", 2, -GH.TOOLBAR_H)
 	inset:SetPoint("BOTTOMLEFT", 2, 24)
 	inset:SetWidth(LIST_W + 20)
 	tab.listInset = inset
@@ -352,7 +355,7 @@ function GH:BuildProfessionsTab(page)
 	area:SetPoint("BOTTOMLEFT", 6, 4)
 	area:SetWidth(LIST_W + 12)
 	tab.listArea = area
-	tab.listHeight = PAGE_H - 24 - 22 - 4
+	tab.listHeight = PAGE_H - GH.TOOLBAR_H - 24 - 22 - 4
 	local box, bar = W.ScrollList(area, ROW_H, function(r, d)
 		if not r.ghRow then SetupRow(r) end
 		FillRow(r, d)
@@ -439,6 +442,10 @@ function GH:BuildProfessionsTab(page)
 		end
 	end)
 end
+
+-- Tab registry (UI\MainFrame.lua): the second tab, only while the professions feature is on.
+GH:RegisterTab({ key = "professions", order = 20, label = "TAB_PROF", sub = "WIN_SUB_PROF", feature = "prof",
+	show = function(gh, page) gh:ShowProfessionsTab(page) end })
 
 -- MainFrame ShowTab("professions"): build once, then draw. First use starts fetching lists.
 function GH:ShowProfessionsTab(page)

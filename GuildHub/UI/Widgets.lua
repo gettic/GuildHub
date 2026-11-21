@@ -663,6 +663,11 @@ function GH:ShowToast(sender, text)
 		end)
 		t.close = W.TitleButton(t, "close")
 		t.close:SetPoint("TOPRIGHT", 2, 2)
+		-- 0.6.0-beta.3: right-click the note = the name menu for its sender (UI\NameMenu.lua)
+		t:EnableMouse(true)
+		t:SetScript("OnMouseUp", function(note, button)
+			if button == "RightButton" and note.sender and GH.ShowNameMenu then GH:ShowNameMenu(note, note.sender, "toast") end
+		end)
 		t:SetScript("OnUpdate", function(self, elapsed)
 			self.left = (self.left or 0) - elapsed
 			if self.left <= 0 then self:Hide() end

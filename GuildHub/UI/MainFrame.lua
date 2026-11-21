@@ -7,19 +7,62 @@ local W = ns.Widgets
 local WIDTH, HEIGHT = 1046, 524
 local TAB_LINE = -58 -- the tabs' bottom edge: 2 px into the page's inset, so the selected tab merges with it
 local PAGE_TOP = -56 -- the pages (and their insets) start here
--- pages: sub = Locale key of the subtitle. Settings has no tab: the gear button in the title bar.
-local PAGES = {
-	{ key = "status", sub = "WIN_SUB" },
-	{ key = "professions", sub = "WIN_SUB_PROF" },
-	{ key = "members", sub = "WIN_SUB_MEMBERS" },
-	{ key = "settings", sub = "WIN_SUB_SETTINGS" },
-}
--- tabs (label = Locale key), left to right from the left edge; Map ... comes later
-local TABS = {
-	{ key = "status", label = "TAB_STATUS" },
-	{ key = "professions", label = "TAB_PROF" },
-	{ key = "members", label = "TAB_MEMBERS" }, -- Guild Recruiter: the Recruiting tab (label TAB_MEMBERS; side list Overview / officer pages)
-}
+------------------------------------------------------------------------
+-- Tab registry (0.6.0-beta.3). Each page registers itself (its own file):
+--   GH:RegisterTab{ key, order, label = Locale key, sub = Locale key (subtitle), feature = key (the
+--     tab shows only while that feature is on), build = fn(GH, page) (once, on first show),
+--     show = fn(GH, page) (every show), eager = true (built with the window), noTab = true (a page
+--     without a tab: Settings, opened by the gear) }
+-- At most 6 tabs (plan sec. 1); the right end of the tab row stays free (>= 200 px) for the later
+-- global search. Tabs are made when the window is first made (every file has loaded by then).
+------------------------------------------------------------------------
+local MAX_TABS = 6
+GH.TAB_MAX, GH.TAB_FREE_PX = MAX_TABS, 200
+GH.TOOLBAR_H = 26 -- a page's toolbar strip (search, sort, ...) above its list; the tab row holds only tabs
+GH.tabDefs, GH.tabOrder = GH.tabDefs or {}, GH.tabOrder or {}
+
+function GH:RegisterTab(def)
+	if type(def) ~= "table" or type(def.key) ~= "string" or self.tabDefs[def.key] then return false end
+	if not def.noTab then
+		local n = 0
+		for _, k in ipairs(self.tabOrder) do if not self.tabDefs[k].noTab then n = n + 1 end end
+		if n >= MAX_TABS then
+			if self.Debug then self:Debug("tab %s refused: at most %d tabs", def.key, MAX_TABS) end
+			return false
+		end
+	end
+	self.tabDefs[def.key] = def
+	self.tabOrder[#self.tabOrder + 1] = def.key
+	table.sort(self.tabOrder, function(a, b)
+		local oa, ob = self.tabDefs[a].order or 50, self.tabDefs[b].order or 50
+		if oa ~= ob then return oa < ob end
+		return a < b
+	end)
+	return true
+end
+
+-- The tabs (not the tab-less pages) in order.
+function GH:TabList()
+	local r = {}
+	for _, k in ipairs(self.tabOrder) do
+		local d = self.tabDefs[k]
+		if not d.noTab then r[#r + 1] = d end
+	end
+	return r
+end
+
+GH:RegisterTab({ key = "status", order = 10, label = "TAB_STATUS", sub = "WIN_SUB", eager = true,
+	build = function(gh, page) gh:BuildStatusTab(page) end, -- UI\StatusTab.lua (its OnUpdate stops while hidden)
+	show = function(gh) if gh.mainFrame and gh.mainFrame:IsShown() then gh:RefreshBoard(true) end end })
+GH:RegisterTab({ key = "settings", order = 99, sub = "WIN_SUB_SETTINGS", noTab = true,
+	build = function(_, page)
+		-- Settings sits in the same kind of inset as the status list, from the tab line down
+		local sInset = W.Inset(page)
+		sInset:SetPoint("TOPLEFT", 2, 0)
+		sInset:SetPoint("BOTTOMRIGHT", -2, 2)
+		page.inset = sInset
+	end,
+	show = function(gh, page) gh:ShowSettingsTab(page) end }) -- Options.lua
 
 function GH:SaveWindowPos()
 	local f = self.mainFrame
@@ -73,6 +116,8 @@ end
 local function MakeTabs(f)
 	local useTpl = PanelTemplates_SetNumTabs and PanelTemplates_SetTab and W.HasTemplate(W.ART.tab)
 	f.tabs, f.Tabs = {}, {}
+	local TABS = GH:TabList()
+	f.tabList = TABS
 	for i, t in ipairs(TABS) do
 		local b = useTpl and W.FromTemplate("Button", "GuildHubMainFrameTab" .. i, f, "tab")
 		if b then
@@ -99,7 +144,7 @@ end
 -- right of the last SHOWN one, so a hidden tab (a switched-off feature) leaves no gap.
 function GH:AnchorTabs(f)
 	local prev
-	for i in ipairs(TABS) do
+	for i in ipairs(f.tabList) do
 		local b = f.Tabs[i]
 		b:ClearAllPoints()
 		if prev then
@@ -195,17 +240,13 @@ function GH:CreateMainFrame()
 	content:SetPoint("BOTTOMRIGHT", -8, 8)
 	f.content = content
 	f.pages = {}
-	for _, p in ipairs(PAGES) do
+	for _, key in ipairs(self.tabOrder) do
 		local page = CreateFrame("Frame", nil, content)
 		page:SetAllPoints(content)
-		f.pages[p.key] = page
+		page:Hide()
+		f.pages[key] = page
 	end
-	-- Settings sits in the same kind of inset as the status list, from the tab line down
-	local sInset = W.Inset(f.pages.settings)
-	sInset:SetPoint("TOPLEFT", 2, 0)
-	sInset:SetPoint("BOTTOMRIGHT", -2, 2)
-	f.pages.settings.inset = sInset
-	MakeTabs(f) -- tabs on the left fill from the left (Professions, Map ... come with their steps)
+	MakeTabs(f) -- tabs fill from the left, in the registry's order
 
 	f:Hide()
 	f:SetScript("OnShow", function(s)
@@ -224,24 +265,57 @@ function GH:CreateMainFrame()
 		self:On("window", ev, OnFitEvent)
 	end
 	self.mainFrame = f
-	self:BuildStatusTab(f.pages.status) -- UI\StatusTab.lua (its OnUpdate stops while the page is hidden)
+	for _, key in ipairs(self.tabOrder) do
+		local d = self.tabDefs[key]
+		if d.eager then self:BuildPage(key) end
+	end
 	self:UpdateFeatureTabs()
 	self:ShowTab("status")
 	return f
 end
 
+-- A page is built once (its registry `build`), on first show or with the window (`eager`).
+function GH:BuildPage(key)
+	local f = self.mainFrame
+	local d = self.tabDefs[key]
+	local page = f and f.pages[key]
+	if not (d and page) or page.ghBuilt then return end
+	page.ghBuilt = true
+	if d.build then d.build(self, page) end
+end
+
+-- May this page show now? (a tab of a switched-off feature doesn't)
+function GH:TabAllowed(key)
+	local d = self.tabDefs[key]
+	if not d then return false end
+	return not d.feature or self:FeatureOn(d.feature)
+end
+
 -- Tabs of switched-off features are hidden; the tabs right of them move left (AnchorTabs).
--- Members has only the Recruiting page for now, so it follows the recruiter feature.
-local TAB_FEATURE = { professions = "prof", members = "recruit" }
 function GH:UpdateFeatureTabs()
 	local f = self.mainFrame
 	if not f then return end
-	for key, feat in pairs(TAB_FEATURE) do
-		local on = self:FeatureOn(feat)
-		if f.tabs[key] then f.tabs[key]:SetShown(on) end
-		if not on and f.currentTab == key then self:ShowTab("status") end
+	for _, d in ipairs(f.tabList) do
+		local on = self:TabAllowed(d.key)
+		if f.tabs[d.key] then f.tabs[d.key]:SetShown(on) end
+		if not on and f.currentTab == d.key then self:ShowTab("status") end
 	end
 	self:AnchorTabs(f)
+end
+
+-- Room left at the right end of the tab row (window px; the 1.3 global search needs TAB_FREE_PX).
+function GH:TabRowFree()
+	local f = self.mainFrame
+	if not f then return nil end
+	local last
+	for _, d in ipairs(f.tabList) do
+		local b = f.tabs[d.key]
+		if b and b:IsShown() then last = b end
+	end
+	local fr = f.GetRight and f:GetRight()
+	local lr = last and last.GetRight and last:GetRight()
+	if type(fr) ~= "number" or type(lr) ~= "number" then return nil end
+	return fr - lr
 end
 
 -- Features.lua: a feature was switched on or off.
@@ -253,11 +327,11 @@ end
 -- Switch the window to a page ("status" or "settings" (gear)). Pages are built on first show.
 function GH:ShowTab(key)
 	local f = self:CreateMainFrame()
-	if not f.pages[key] then key = "status" end
-	if TAB_FEATURE[key] and not self:FeatureOn(TAB_FEATURE[key]) then key = "status" end
+	if not f.pages[key] or not self:TabAllowed(key) then key = "status" end
 	f.currentTab = key
 	self:HideDungeonPicker()
-	for i, t in ipairs(TABS) do
+	if self.HideNameMenu then self:HideNameMenu() end
+	for i, t in ipairs(f.tabList) do
 		if not f.tabTemplate then
 			f.tabs[t.key]:SetActive(t.key == key)
 		elseif t.key == key then
@@ -267,23 +341,18 @@ function GH:ShowTab(key)
 		end
 	end
 	if key == "settings" then f.selectedTab = nil end -- next SetTab re-selects Status properly
-	for _, p in ipairs(PAGES) do
-		f.pages[p.key]:SetShown(p.key == key)
-		if p.key == key then f.sub:SetText(L[p.sub]) end
+	self:BuildPage(key)
+	for _, k in ipairs(self.tabOrder) do
+		local pg = f.pages[k] -- a page registered after the window was made has no frame (never shown)
+		if pg then pg:SetShown(k == key) end
+		if k == key then f.sub:SetText(L[self.tabDefs[k].sub] or "") end
 	end
 	local gear = f.gearButton
 	if gear and gear.LockHighlight then
 		if key == "settings" then gear:LockHighlight() else gear:UnlockHighlight() end
 	end
-	if key == "settings" then
-		self:ShowSettingsTab(f.pages.settings) -- Options.lua
-	elseif key == "professions" then
-		self:ShowProfessionsTab(f.pages.professions) -- UI\ProfessionsTab.lua (built on first show)
-	elseif key == "members" then
-		self:ShowMembersTab(f.pages.members) -- UI\RecruitPage.lua (built on first show)
-	elseif f:IsShown() then
-		self:RefreshBoard(true)
-	end
+	local d = self.tabDefs[key]
+	if d.show then d.show(self, f.pages[key]) end
 end
 
 -- /ghub test ui: which art this client gave the window (for bug reports).

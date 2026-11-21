@@ -61,6 +61,7 @@ local function ShortFor(gh, name, zone)
 	local e = gh.INSTANCE_BY_NAME[zone]
 	return e and e.short or nil
 end
+GH.DungeonShortFor = ShortFor -- 0.6.0-beta.3: Show on map / Ask to join (Features\Actions.lua)
 
 -- { [entrance] = { total = n, [short] = n } } for online guild members (not you). Numbers only.
 function GH:DungeonCounts()

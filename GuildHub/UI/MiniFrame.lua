@@ -42,12 +42,15 @@ local function SetupMiniRow(r)
 	r.header:SetPoint("LEFT", 4, 0)
 	r.headerLine = W.HeaderLine(r, r.header)
 	-- the player's own click only: opens the chat box to whisper, never sends anything
-	r:SetScript("OnClick", function(self)
+	r:SetScript("OnClick", function(self, button)
+		if button == "RightButton" then return end -- right-click = the name menu (below)
 		local d = self.data
 		if d and not d.header then GH:WhisperMember(d.name) end
 	end)
 	r:SetScript("OnEnter", function(self) GH:MemberTooltip(self, self.data, L.MINI_CLICK) end)
 	r:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	-- 0.6.0-beta.3: right-click = the name menu (UI\NameMenu.lua)
+	GH:NameMenuOnRow(r, function(s) return s.data and not s.data.header and s.data.name or nil end, "mini")
 end
 
 local function MakeMiniRow(parent)

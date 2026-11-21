@@ -36,6 +36,8 @@ function GH:RebuildRoster()
 	for i = 1, num do
 		local name, rankName, rankIndex, level, _, zone, _, _, isOnline, status, class = GetGuildRosterInfo(i)
 		name = U.FullName(name)
+		-- 0.6.0-beta.3: a secret online flag is never tested (= offline)
+		if U.IsSecret(isOnline) then isOnline = false end
 		if name then
 			roster[name] = {
 				rankIndex = rankIndex, rankName = U.CleanText(rankName, 30), -- CleanText skips secret values

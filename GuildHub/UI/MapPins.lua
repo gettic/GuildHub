@@ -137,6 +137,22 @@ function GH:DotTooltip(owner)
 	if not p then return end
 	if not p.test and self:IsIgnored(name) then return end -- tos: no tooltip for ignored players
 	GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+	self:AddHoverCard(name, p)
+	local near = DotsNear(owner)
+	if #near > 0 then
+		local shown = {}
+		for i = 1, math.min(#near, STACK_MAX) do shown[i] = U.ShortName(near[i]) end
+		local text = L.TIP_DOT_ALSO:format(table.concat(shown, ", "))
+		if #near > STACK_MAX then text = text .. L.TIP_DOT_MORE:format(#near - STACK_MAX) end
+		GameTooltip:AddLine(text, 0.8, 0.8, 0.8, true)
+	end
+	if p.test then GameTooltip:AddLine(L.TIP_DOT_TEST, 0.6, 0.6, 0.6)
+	else GameTooltip:AddLine(L.TIP_DOT_AGO:format(U.Ago(math.max(0, GetTime() - p.t))), 0.6, 0.6, 0.6) end
+	GameTooltip:Show()
+end
+
+-- The hover card's lines for one guildmate (also the Map tab's rows, 0.6.0-beta.3). p = their dot or nil.
+function GH:AddHoverCard(name, p)
 	local r = self.roster[name]
 	local class = ClassOf(name, p)
 	GameTooltip:AddLine(U.ClassColored(name, class) .. (RosterAfk(r) and L.TIP_DOT_AFK or ""))
@@ -172,17 +188,6 @@ function GH:DotTooltip(owner)
 			if ok and type(text) == "string" and text ~= "" then GameTooltip:AddLine(text, cr or 1, cg or 1, cb or 1, true) end
 		end
 	end
-	local near = DotsNear(owner)
-	if #near > 0 then
-		local shown = {}
-		for i = 1, math.min(#near, STACK_MAX) do shown[i] = U.ShortName(near[i]) end
-		local text = L.TIP_DOT_ALSO:format(table.concat(shown, ", "))
-		if #near > STACK_MAX then text = text .. L.TIP_DOT_MORE:format(#near - STACK_MAX) end
-		GameTooltip:AddLine(text, 0.8, 0.8, 0.8, true)
-	end
-	if p.test then GameTooltip:AddLine(L.TIP_DOT_TEST, 0.6, 0.6, 0.6)
-	else GameTooltip:AddLine(L.TIP_DOT_AGO:format(U.Ago(math.max(0, GetTime() - p.t))), 0.6, 0.6, 0.6) end
-	GameTooltip:Show()
 end
 
 ------------------------------------------------------------------------
@@ -368,6 +373,14 @@ local function BuildZoneIndex()
 			zoneIndex[z.name] = e
 		end
 	end
+end
+
+-- 0.6.0-beta.3: the uiMapID of an open-world zone by its name (Show on map), or nil.
+function GH:ZoneMapID(zone)
+	if type(zone) ~= "string" or U.IsSecret(zone) then return nil end
+	if not zoneIndex or not next(zoneIndex) then BuildZoneIndex() end
+	local e = zoneIndex[zone]
+	return e and e.id or nil
 end
 
 -- { [zone name] = count } of online guild members (not you), plus the test dots' zone.
@@ -580,7 +593,10 @@ GH:On("mapcombat", "PLAYER_REGEN_ENABLED", AfterCombat)
 -- The known invite fallback (InviteUnit) is not counted here.
 local function OnActionBlocked(_, addon, func)
 	if addon ~= "GuildHub" then return end
-	if type(func) == "string" and func:find("InviteUnit", 1, true) then return end
+	if type(func) == "string" and not U.IsSecret(func) and func:find("InviteUnit", 1, true) then return end
+	-- 0.6.0-beta.3: Ask to join's request falls back to the chat box too (Features\Actions.lua)
+	if type(func) == "string" and not U.IsSecret(func) and func:find("RequestInviteFromUnit", 1, true) then return end
+	if GH.lastAsk and GetTime() - GH.lastAsk.time < 3 then return end
 	local a = GH.actionBlocked
 	-- the recruiter's ad post / /ghub test post / guild invite (it falls back to the chat box): a refusal is expected (no key press, or
 	-- the timer control) and gets its own result line, so it is not a taint problem. Blizzard's own

@@ -66,6 +66,7 @@ function GH:SetMapShare(v)
 	end
 	if self.MapRedraw then self:MapRedraw() end
 	if self.optionsChanged then self:optionsChanged() end
+	if self.RefreshMapTab then self:RefreshMapTab() end
 end
 
 ------------------------------------------------------------------------
@@ -398,6 +399,7 @@ function GH:MapRosterCheck()
 	self:MapCheckDots()
 	if self.MapAfkRefresh then self:MapAfkRefresh() end
 	if self.MapZoneCountsDirty then self:MapZoneCountsDirty() end
+	if self.RefreshMapTab then self:RefreshMapTab() end -- 0.6.0-beta.3 Map tab (redraw while shown)
 end
 
 ------------------------------------------------------------------------

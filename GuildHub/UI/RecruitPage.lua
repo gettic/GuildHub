@@ -773,6 +773,10 @@ function GH:ShowMembersTab(page)
 	self:DrawRecruitPage()
 end
 
+-- Tab registry (UI\MainFrame.lua): the Recruiting tab (key "members"), after the Map tab.
+GH:RegisterTab({ key = "members", order = 40, label = "TAB_MEMBERS", sub = "WIN_SUB_MEMBERS", feature = "recruit",
+	show = function(gh, page) gh:ShowMembersTab(page) end })
+
 ------------------------------------------------------------------------
 -- The Copy box (/ghub recruit): the text, and the Discord invite with who set it. Read-only.
 ------------------------------------------------------------------------

@@ -1080,6 +1080,8 @@ GH:RegisterFeature({
 	key = "recruit", name = "OPT_FEAT_RECRUIT",
 	defaults = { profile = { recruitToasts = true, recruitSpot = false } },
 	messages = MESSAGES,
+	-- 0.6.0-beta.3: Start / End trial in Guild Hub's own name menu (officer section, UI\NameMenu.lua)
+	nameMenu = { { kind = "officer", order = 10, fn = function(gh, name) return gh.TrialMenuEntries and gh:TrialMenuEntries(name) or {} end } },
 	enable = function(gh)
 		gh.recruitInInst = IsInInstance() and true or false
 		gh:On("recruit", "PLAYER_ENTERING_WORLD", OnWorld)

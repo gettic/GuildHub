@@ -301,6 +301,8 @@ function ST.MainParts()
         { name = "tab.status", obj = tabs.status },
         { name = "tab.prof", obj = tabs.professions, opt = not GH:FeatureOn("prof"), shownOnly = not GH:FeatureOn("prof") },
         { name = "tab.members", obj = tabs.members, opt = not GH:FeatureOn("recruit"), shownOnly = not GH:FeatureOn("recruit") },
+        -- 0.6.0-beta.3: the Map tab (hidden while the map feature is off)
+        { name = "tab.map", obj = tabs.map, opt = not GH:FeatureOn("map"), shownOnly = not GH:FeatureOn("map") },
         { name = "status.search", obj = t.search },
         { name = "status.sort", obj = t.sort },
         { name = "status.lfgOnly", obj = t.compact },
@@ -331,6 +333,102 @@ function ST.ProfParts()
         { name = "prof.footer", obj = t.footer },
         { name = "prof.popup", obj = t.popup, opt = true, shownOnly = true },
     }
+end
+
+-- 0.6.0-beta.3: the Map tab ("Who is where"): toolbar, list, panel (buttons by state)
+function ST.MapParts()
+    local t = GH.mapTab or {}
+    local mapOn = GH:FeatureOn("map")
+    return {
+        { name = "map.search", obj = t.search },
+        { name = "map.addonOnly", obj = t.addonOnly },
+        { name = "map.list", obj = t.listInset },
+        { name = "map.panel", obj = t.panel },
+        { name = "map.note", obj = t.note },
+        { name = "map.share", obj = t.share, opt = true, shownOnly = true },
+        { name = "map.zone", obj = t.zone, opt = true, shownOnly = true },
+        { name = "map.findMe", obj = t.findMe, opt = not mapOn, shownOnly = not mapOn },
+        { name = "map.openMap", obj = t.openMap },
+        { name = "map.tickMini", obj = t.tickMini, opt = not mapOn, shownOnly = not mapOn },
+        { name = "map.tickAfk", obj = t.tickAfk, opt = not mapOn, shownOnly = not mapOn },
+    }
+end
+
+-- 0.6.0-beta.3: no toolbar part overlaps a tab, and the tab row keeps its right end free (>= 200 px)
+local function CheckTabRow()
+    local f = GH.mainFrame
+    if not f or not f.tabs then return end
+    Count()
+    local free = GH.TabRowFree and GH:TabRowFree()
+    if type(free) == "number" and not IsSecret(free) and free < (GH.TAB_FREE_PX or 200) then
+        Problem("TABS", "free", ("%d px free at the right end (want %d)"):format(free, GH.TAB_FREE_PX or 200))
+    end
+    Count()
+    local bars = {}
+    local st, pt = GH.statusTab or {}, GH.profTab or {}
+    for _, o in ipairs({ st.search, st.sort, st.compact, pt.search, pt.filter, pt.online,
+        GH.mapTab and GH.mapTab.search, GH.mapTab and GH.mapTab.addonOnly }) do
+        if o and o.IsShown and o:IsShown() then bars[#bars + 1] = o end
+    end
+    for key, b in pairs(f.tabs) do
+        local rb = b:IsShown() and ScreenRect(b)
+        if type(rb) == "table" then
+            for _, o in ipairs(bars) do
+                local ro = ScreenRect(o)
+                if type(ro) == "table" and Overlap(ro, rb) > 4 then Problem("TABS", key, "a toolbar part overlaps the tab") end
+            end
+        end
+    end
+    if type(free) == "number" and not IsSecret(free) then Info(("tab row free %d px"):format(free)) end
+end
+
+-- 0.6.0-beta.3: the name menu's entries (built, never opened: nothing pops up) on yourself and on one
+-- online guildmate; the action APIs only checked with type() (nothing is called).
+local MENU_ORDER = { whisper = 1, invite = 2, ask = 3, waypoint = 4, showmap = 5, joinme = 6, mute = 7, more = 8 }
+local function CheckMenuEntries(list, who)
+    Count()
+    local last, greyed = 0, 0
+    for _, e in ipairs(list) do
+        if e.kind == "head" then break end
+        local pos = e.key and MENU_ORDER[e.key]
+        if pos then
+            if pos < last then Problem("MENU", who, "entries out of order at " .. e.key) end
+            last = pos
+        end
+        if (e.kind == "button" or e.kind == "submenu") and not e.ok then
+            greyed = greyed + 1
+            if type(e.why) ~= "string" or e.why == "" then Problem("MENU", who, (e.key or "?") .. " greyed without a reason") end
+        end
+    end
+    if GH:NameMenuTopCount(list) > (GH.NAME_MENU_MAX_TOP or 8) then Problem("MENU", who, "too many top entries") end
+    return greyed
+end
+
+local function CheckNameMenu()
+    if not GH.NameMenuEntries then return Skip("menu", "(not loaded)") end
+    local me = GH:MyName()
+    local own = GH:NameMenuEntries(me, "selftest")
+    CheckMenuEntries(own, "self")
+    local other
+    for name, r in pairs(GH.roster or {}) do
+        if r.online and not GH:IsMyChar(name) then other = name break end
+    end
+    local items, greyed, hooks = #own, 0, #GH:Hooks("nameMenu")
+    if other then
+        local list = GH:NameMenuEntries(other, "selftest")
+        greyed = CheckMenuEntries(list, "guildmate")
+        items = #list
+    else
+        Skip("menu.guildmate", "(nobody else online)")
+    end
+    Count()
+    local rinv = type(_G.SLASH_REQUESTINVITE1) == "string" and _G.SLASH_REQUESTINVITE1 ~= ""
+    if not rinv then Problem("ACT", "requestinvite", "SLASH_REQUESTINVITE1 is missing (Ask to join's fallback)") end
+    local function y(v) return v and "y" or "n" end
+    Info(("menu items=%d greyed=%d hook=%d mu=%s | wp api=%s ask api=%s openmap=%s rinv=%s"):format(items, greyed, hooks,
+        y(MenuUtil and type(MenuUtil.CreateContextMenu) == "function"),
+        y(C_Map and type(C_Map.SetUserWaypoint) == "function" and UiMapPoint and type(UiMapPoint.CreateFromCoordinates) == "function"),
+        y(C_PartyInfo and type(C_PartyInfo.RequestInviteFromUnit) == "function"), y(type(_G.OpenWorldMap) == "function"), y(rinv)))
 end
 
 -- Guild Recruiter R1: the Recruiting tab's Overview page (officer controls only for officers)
@@ -692,9 +790,31 @@ local function NextMembers()
     Finish()
 end
 
+-- 0.6.0-beta.3: the Map tab (full mode). Opening it must not add to the taint counter.
+local function StepMap()
+    CheckGroup(ST.MapParts(), Win())
+    Guard("tabrow", CheckTabRow)
+    Count()
+    local before = run.state.taintBefore or 0
+    local now = GH.actionBlocked and GH.actionBlocked.n or 0
+    if now > before then Problem("TAINT", "maptab", (now - before) .. " blocked action(s) after the Map tab") end
+    NextMembers()
+end
+
+local function NextMap()
+    if run.mode == "full" and GH:FeatureOn("map") and GH.mainFrame.tabs.map then
+        run.state.prevTab = run.state.prevTab or GH.mainFrame.currentTab
+        run.state.taintBefore = GH.actionBlocked and GH.actionBlocked.n or 0
+        GH:ShowTab("map")
+        return Later(2, StepMap)
+    end
+    NextMembers()
+end
+
 local function StepProf()
     CheckGroup(ST.ProfParts(), Win())
-    NextMembers()
+    Guard("tabrow", CheckTabRow)
+    NextMap()
 end
 
 -- 0.4.0-b2: the card that asks. A real card on screen is checked as it is; else a test card with
@@ -787,15 +907,17 @@ end
 
 local function StepMain()
     CheckGroup(ST.MainParts(), Win())
+    Guard("tabrow", CheckTabRow)
     Guard("card", CheckCard)
     Guard("guide", CheckGuide)
+    Guard("menu", CheckNameMenu)
     if run.mode == "full" and GH:FeatureOn("prof") then
         -- the Professions tab (built on first show); Restore goes back to the page that was open
         run.state.prevTab = run.state.prevTab or GH.mainFrame.currentTab
         GH:ShowTab("professions")
         return Later(2, StepProf)
     end
-    NextMembers()
+    NextMap()
 end
 
 -- ---------------------------------------------------------------------------

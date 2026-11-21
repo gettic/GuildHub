@@ -66,8 +66,12 @@ end
 function GH:InitInviteWatch()
 	if self.inviteWatch then return end
 	local function OnBlocked(_, addon, func)
-		if addon ~= "GuildHub" or not GH.lastInvite then return end
-		if type(func) == "string" and not U.IsSecret(func) and not func:find("Invite") then return end
+		if addon ~= "GuildHub" then return end
+		local f = type(func) == "string" and not U.IsSecret(func) and func or nil
+		-- 0.6.0-beta.3 Ask to join (Features\Actions.lua): its own fallback, never the /invite one
+		if GH.lastAsk and (not f or f:find("RequestInvite")) then return GH:AskFallback() end
+		if not GH.lastInvite then return end
+		if f and not f:find("Invite") then return end
 		GH:UseInviteFallback()
 	end
 	self:On("invite", "ADDON_ACTION_BLOCKED", OnBlocked)  -- Events.lua dispatcher
@@ -124,6 +128,8 @@ local function SetupRow(r)
 	r.invite:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	r:SetScript("OnEnter", function(self) GH:MemberTooltip(self, self.data) end)
 	r:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	-- 0.6.0-beta.3: right-click = the name menu (UI\NameMenu.lua); left-click does nothing, as before
+	GH:NameMenuOnRow(r, function(s) return s.data and not s.data.header and s.data.name or nil end, "status")
 end
 
 local function MakeRow(parent)
@@ -290,15 +296,11 @@ function GH:BuildStatusTab(parent)
 	tab.offset = 0
 	local db = self.db.profile
 
-	-- top bar: search, sort, "LFG only"
+	-- toolbar strip at the top of the page, above the list (0.6.0-beta.3: out of the tab row, so the
+	-- row holds only tabs and keeps its right end free): search, Sort, "LFG only"
 	local search = W.EditBox(parent, 330, 22, 40, L.SEARCH_HINT, "search")
-	-- the toolbar sits in the tab row, right of the last tab (MainFrame `f.lastTab`)
-	local lastTab = self.mainFrame and (self.mainFrame.tabEnd or self.mainFrame.lastTab)
-	if lastTab then
-		search:SetPoint("BOTTOMLEFT", lastTab, "BOTTOMRIGHT", 24, 4)
-	else
-		search:SetPoint("BOTTOMLEFT", parent, "TOPLEFT", 120, 4)
-	end
+	search:SetPoint("TOPLEFT", parent, "TOPLEFT", search.ghTemplate and 12 or 6, -3)
+	tab.toolbarH = GH.TOOLBAR_H
 	-- the search box template has its own scripts (clear button, hint): ours are hooked on
 	search:HookScript("OnEnterPressed", function(s) s:ClearFocus() end)
 	search:HookScript("OnEscapePressed", function(s) -- Esc empties the search and shows everyone again
@@ -326,7 +328,7 @@ function GH:BuildStatusTab(parent)
 
 	-- the list sits in an inset with the column titles at its top
 	local inset = W.Inset(parent)
-	inset:SetPoint("TOPLEFT", 2, 0) -- from the tab line: the selected tab merges into its top edge
+	inset:SetPoint("TOPLEFT", 2, -GH.TOOLBAR_H) -- under the toolbar strip
 	inset:SetPoint("BOTTOMLEFT", 2, 24)
 	inset:SetWidth(LIST_W + 20)
 	tab.listInset = inset
@@ -348,7 +350,7 @@ function GH:BuildStatusTab(parent)
 	listArea:SetPoint("BOTTOMLEFT", 6, 4)
 	listArea:SetWidth(LIST_W + 12)
 	tab.listArea = listArea
-	tab.listHeight = 460 - 24 - 22 - 4 -- page height minus footer, column titles and margin (17 rows)
+	tab.listHeight = 460 - GH.TOOLBAR_H - 24 - 22 - 4 -- page height minus toolbar, footer, column titles and margin (16 rows)
 
 	-- Blizzard's ScrollBox list (rows are reused while scrolling), else our own rows + slider
 	local box, sbar = W.ScrollList(listArea, ROW_H, function(r, d)

@@ -32,14 +32,14 @@ The Recruiting page only shows when the Guild Recruiter is on. On Trial and Vete
 - A Professions tab: who has which profession, and who can make an item.
 - A "crafted by" line in item tooltips.
 - Guild map dots: guildmates who share their position show on the world map and the minimap, with a hover card, dungeon labels and a "Find me" button.
+- A Map tab: online guildmates grouped by zone, with your own position choice and a Find me button.
+- A right-click menu on names: whisper, invite, ask to join, waypoint, show on map and more.
 - A short Getting started walkthrough.
 - A Guild Recruiter (beta): a Recruiting tab with what the guild needs, the guild makeup, the guild's ad to post or copy, and lists for officers.
 
-Planned next: a Map tab in the window. It is not built yet.
-
 ## Status board
 
-Type `/ghub` or click the Guild Hub minimap button to open it. It lists every online guildmate with rank, level, zone, what they are doing. How long they have had that status shows in grey at the right end of the STATUS column (for example "12 min"). Hover a row to see when it clears, such as "for 45 min · clears in 15 min". Each row has Whisper and Invite buttons. Click the Sort menu to sort by activity, level, zone, rank or name. Tick "LFG only" to list only guildmates looking for a group. Search by name, zone, status or rank; press Esc in the search box to clear it. Guildmates without Guild Hub show greyed out. The window uses Blizzard's own look. The Status tab sits on the top edge of the list, with Search, Sort and "LFG only" beside it. Settings is the gear button in the title bar.
+Type `/ghub` or click the Guild Hub minimap button to open it. It lists every online guildmate with rank, level, zone, what they are doing. How long they have had that status shows in grey at the right end of the STATUS column (for example "12 min"). Hover a row to see when it clears, such as "for 45 min · clears in 15 min". Each row has Whisper and Invite buttons. Click the Sort menu to sort by activity, level, zone, rank or name. Tick "LFG only" to list only guildmates looking for a group. Search by name, zone, status or rank; press Esc in the search box to clear it. Guildmates without Guild Hub show greyed out. The window uses Blizzard's own look. The tabs (Status, Professions, Map, Recruiting) sit in a row on top. Each page has its own strip above its list: on the Status page it holds Search, Sort and "LFG only". The list shows 16 rows. Settings is the gear button in the title bar. Right-click a name for the [name menu](#name-menu).
 
 **Your status.** Pick LFG (then choose a dungeon), Need help, Farming, Leveling, Busy or Open to chat. You can add a short note of up to 60 letters. A new status lasts 1 hour. The "Lasts" button changes that to 1, 2, 4 or 8 hours: left-click for longer, right-click for shorter. Changing the note or the dungeon keeps the time. Choosing another status, or turning it off, clears the old note. Nothing is shared until you press Enter in the note box. "Press Enter to share" shows while your typed note is not shared yet. The dungeon is picked from a drop-down menu.
 
@@ -49,15 +49,32 @@ Type `/ghub` or click the Guild Hub minimap button to open it. It lists every on
 
 **Notes.** A small note, with no sound, appears when a guildmate within 5 levels of you starts LFG, or when someone asks for help. You get at most one per player every 5 minutes. Use "Mute" on a note to stop a player's notes (this also hides their status text). Unmute them, or switch the notes off, in the settings.
 
-**Mini mode.** Click the "-" button next to the close button to switch to a small window you can move. It only lists guildmates with Guild Hub and what they are doing. Click a name to whisper. Click "+" to go back to the full window. `/ghub` and the minimap button always open the full window (if the mini window is showing, it closes). Esc does not close the mini window: use its x.
+**Mini mode.** Click the "-" button next to the close button to switch to a small window you can move. It only lists guildmates with Guild Hub and what they are doing. Click a name to whisper, or right-click it for the [name menu](#name-menu). Click "+" to go back to the full window. `/ghub` and the minimap button always open the full window (if the mini window is showing, it closes). Esc does not close the mini window: use its x.
 
 **Minimap button.** Left-click opens the window. Right-click opens Settings. Drag to move it. Hover it to see how many guildmates are looking for a group or need help. You can hide it in the settings.
 
 If the game blocks the Invite button, Guild Hub puts `/invite Name` in your chat box. Press Enter to send it.
 
+## Name menu
+
+Right-click a name to open a menu. It works on the Status list, the mini window, the Map tab, the crafters on the Professions tab and the small alert note. It never opens in combat. Entries that can't be used right now are greyed out, and hovering one says why.
+
+| Entry | What it does |
+|---|---|
+| Whisper | Starts a whisper |
+| Invite to group | Invites them (not if they are already in your group) |
+| Ask to join | Asks their group to invite you. Works once a minute per person. If the game blocks it, `/requestinvite Name` is put in your chat box for you to send |
+| Waypoint | Puts the game's map pin and arrow where they were when their position last came in. It doesn't follow them. Needs that they share, and you share too |
+| Show on map | Opens the world map on their spot (or their zone) |
+| Join me | Fills a whisper with your own zone and spot. You press Enter to send it |
+| Mute alerts / Unmute | Stops or restores alerts from that player |
+| More | Copy name, and Show professions |
+
+Officers also get an Officer part on guild members, with Start trial and End trial (see [Guild Recruiter](#guild-recruiter)). Each entry runs only from your click: Guild Hub never sends anything by itself for these.
+
 ## Professions
 
-Click the Professions tab to see which guildmates have which profession and how high their skill is. Use the recipe search to ask "who can make X?". The Request button writes a polite whisper into your chat box. You press Enter yourself: Guild Hub never sends it for you. A quiet feed shows rare recipes that guildmates learned.
+Click the Professions tab to see which guildmates have which profession and how high their skill is. Use the recipe search at the top of the page to ask "who can make X?". Right-click a crafter for the [name menu](#name-menu). The Request button writes a polite whisper into your chat box. You press Enter yourself: Guild Hub never sends it for you. A quiet feed shows rare recipes that guildmates learned.
 
 Open each of your profession windows once, so Guild Hub can read your recipes.
 
@@ -71,11 +88,21 @@ Open each of your profession windows once, so Guild Hub can read your recipes.
 
 Guildmates who share their position show as class-coloured dots on the world map and the minimap. Dots of guildmates who are AFK are dimmed. Players on your ignore list get no dot. The world map also shows how many guildmates are in each zone (from the guild list).
 
+**Map tab.** Click the Map tab (or type `/ghub map`) to see "Who is where". The list shows online guildmates grouped by zone, with your own zone on top. Dungeon and raid zones get an icon. Search by name or zone, or tick "Guild Hub users only" (the same setting as "Show members without Guild Hub" on the Status page). A small dot at the right end of a row means you can see that guildmate's exact position: they share, and you share too. Left-click a name to show them on the world map. Hover a name for the same card as the map dots. Right-click for the [name menu](#name-menu). The panel on the right has:
+
+- your position choice: "Share my exact position" or "Zone only"
+- the Find me button and an "Open world map" button
+- how many guildmates share their exact position
+- "Dungeons now": how many guildmates are in which dungeon (numbers only)
+- two map settings: "Dots on the minimap" and "Hide my dot while AFK"
+
+The tab only shows who is online now. It saves and sends nothing. It is hidden while the Guild map feature is off.
+
 **Hover card.** Hover a dot to see a card with the name, level, class, rank, zone, status, group size, professions and how long ago the position was sent. If other dots sit right next to it, an "Also here" line names them. Group size and professions show only if you share those yourself (see [Fair trade](#fair-trade)). No card in combat.
 
 **Dungeon labels.** On the world map, dungeon entrances show how many online guildmates are inside, for example "The Deadmines 2". Blackrock Mountain has one combined label, such as "Blackrock Mountain: BRD 2 · MC 5". Only numbers show, never names. The counts come from the guild list and from statuses, and nothing is sent for them.
 
-**Find me.** Lost your guildmates, or want them to spot you? Click the "Find me" button on the Status tab, or type `/ghub findme`. Your dot pulses on the maps of guildmates who share their position, and they get one chat line. It works only while you share your exact position, and at most once every 30 seconds. On the receiving side, one guildmate's pulse shows at most once every 25 seconds. Turn the chat line off with "Show Find me lines in chat" in Settings > Guild map. Muting someone stops their pulses and lines.
+**Find me.** Lost your guildmates, or want them to spot you? Click the "Find me" button on the Status or Map tab, or type `/ghub findme`. Your dot pulses on the maps of guildmates who share their position, and they get one chat line. It works only while you share your exact position, and at most once every 30 seconds. On the receiving side, one guildmate's pulse shows at most once every 25 seconds. Turn the chat line off with "Show Find me lines in chat" in Settings > Guild map. Muting someone stops their pulses and lines.
 
 **Sharing your position.** The first time on each character, a small "Guild Hub" card asks: "Share my position", "Zone only" or "Not now". "Zone only" is a lasting no: guildmates see only your zone in the guild list, and the card stops asking. "Not now" asks again next login. Turning it off in Settings > What I share is also a real no. Your position is:
 
@@ -161,6 +188,7 @@ Copy the `GuildHub` folder into your WoW `AddOns` folder, then restart the game 
 | `/ghub help` | Show the list of commands |
 | `/ghub status` | Show who has Guild Hub and which version (beta testers too), the guild history counts, and how many addon messages you sent in the last 10 minutes |
 | `/ghub options` | Open Settings |
+| `/ghub map` | Open the Map tab (who is where; see [Guild map](#guild-map)) |
 | `/ghub findme` | Make your dot pulse on guildmates' maps (see [Guild map](#guild-map)) |
 | `/ghub start` | Open the Getting started walkthrough |
 | `/ghub recruit` | Show the guild's recruitment text to copy |
@@ -228,6 +256,7 @@ The addon lives in `GuildHub\`. Files are loaded in this order (see `GuildHub_Fo
 | `Features\Recorders.lua` | Guild history kept on this computer |
 | `Features\Map.lua` | Guild map: sharing and receiving positions |
 | `Features\MapDungeons.lua` | Guild map: dungeon entrances and their labels |
+| `Features\Actions.lua` | The name menu's actions: Waypoint, Show on map, Ask to join, Join me |
 | `Features\RecruitOff.lua` | Guild Recruiter: officer lists, the name menu, Invite to guild, trials |
 | `Features\RecruitTools.lua` | Guild Recruiter: Suggest to officers, marking chat lines, guild totals |
 | `Features\RecruitAds.lua` | Guild Recruiter: the ad builder and the long post |
@@ -245,6 +274,8 @@ The addon lives in `GuildHub\`. Files are loaded in this order (see `GuildHub_Fo
 | `UI\RecruitBuddyPage.lua` | The Recruiting tab's New members page |
 | `UI\RecruitOffPage.lua` | The Recruiting tab's officer pages |
 | `UI\MapPins.lua` | Dots on the world map and minimap |
+| `UI\NameMenu.lua` | The right-click name menu |
+| `UI\MapTab.lua` | The Map tab ("Who is where") |
 | `Options.lua` | Settings (the Settings page in the window and the Options page) |
 | `ApiTest.lua` | The `/ghub test api` check |
 | `SelfTest.lua` | The `/ghub selftest` check |

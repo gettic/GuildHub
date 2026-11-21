@@ -696,6 +696,22 @@ function GH:TrialMenu(root, n)
 	return 1
 end
 
+-- 0.6.0-beta.3: the same trial entries for Guild Hub's own name menu (UI\NameMenu.lua, officer section;
+-- the menu itself checks that we are an officer and the target isn't). Plain entries, never kick or promote.
+function GH:TrialMenuEntries(n)
+	if not On() or not IAmOfficer() or not self:IsGuildMember(n) or self:IsOfficer(n) then return {} end
+	local why = (not CanOfficerChat()) and L.OFF_NO_OCHAT_SHORT or nil
+	if self:OnTrial(n) then
+		return { { key = "trialEnd", text = L.MENU_TRIAL_END, ok = not why, why = why, run = function() GH:EndTrial(n) end } }
+	end
+	local items = {}
+	for _, d in ipairs(TRIAL_DAYS) do
+		items[#items + 1] = { kind = "button", key = "trial" .. d, text = L.MENU_TRIAL_DAYS:format(d), ok = not why, why = why,
+			run = function() GH:SetTrial(n, d) end }
+	end
+	return { { key = "trialStart", text = L.MENU_TRIAL_START, ok = not why, why = why, items = items } }
+end
+
 -- Fills the group (also used by the tests with a fake description). Returns the number of entries.
 -- Officers: outsiders get Invite / Prospects / Don't invite, members (not officers) get Trials.
 -- Members (R3): outsiders get Suggest to officers (Features\RecruitTools.lua).
