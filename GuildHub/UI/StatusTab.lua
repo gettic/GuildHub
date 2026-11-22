@@ -14,7 +14,9 @@ local COL = {
 	-- and the status text gets the room the time doesn't need; then GROUP ("Yours", "3/5",
 	-- "R 18"); actions stay at the right
 	name = { 8, 116 }, rank = { 128, 86 }, lvl = { 218, 30 }, zone = { 252, 120 }, status = { 376, 236 },
-	group = { 616, 52 }, whisper = { 672, 58 }, invite = { 734, 44 },
+	-- 1.0.0-beta.1: GROUP 46 px (its widest text "31/40" needs ~30) so the 64 px action slot fits
+	-- "I can help" without running into GROUP
+	group = { 616, 46 }, whisper = { 666, 64 }, invite = { 734, 44 },
 }
 local TIME_W, TIME_GAP = 70, 6 -- widest time ("10 h 59 min") and the gap before it
 local GROUP_TEXT_COLOR = { yours = { 0.45, 0.9, 0.45 }, solo = { 0.55, 0.55, 0.55 }, other = { 0.9, 0.9, 0.9 } }
@@ -106,12 +108,28 @@ local function SetupRow(r)
 	r.time:SetWidth(TIME_W)
 	r.time:SetTextColor(W.COLOR.gray[1], W.COLOR.gray[2], W.COLOR.gray[3])
 	r.group = col("group", "GameFontHighlightSmall")
+	-- 1.0.0-beta.2 (Q5): a +/- box before the group header; click the header to fold the group
+	r.fold = r:CreateTexture(nil, "ARTWORK")
+	r.fold:SetSize(14, 14)
+	r.fold:SetPoint("LEFT", 6, 0)
+	r.fold:Hide()
 	r.header = W.Text(r, "GameFontNormal")
-	r.header:SetPoint("LEFT", 8, 0)
+	r.header:SetPoint("LEFT", 24, 0)
 	r.headerLine = W.HeaderLine(r, r.header)
+	r:SetScript("OnClick", function(s, button)
+		if button ~= "RightButton" and s.data and s.data.header then GH:ToggleFold(s.data.header) end
+	end)
 	r.whisper = W.Button(r, L.BTN_WHISPER, COL.whisper[2], 18)
 	r.whisper:SetPoint("LEFT", COL.whisper[1], 0)
 	r.whisper:SetScript("OnClick", function() GH:WhisperMember(r.member) end)
+	-- 1.0.0-beta.1: "I can help" (Need-help rows), same slot and width as Whisper, small font
+	r.canHelp = W.Button(r, L.BTN_CANHELP, COL.whisper[2], 18, "GameFontNormalSmall")
+	r.canHelp:SetPoint("LEFT", COL.whisper[1], 0)
+	if r.canHelp.SetMotionScriptsWhileDisabled then r.canHelp:SetMotionScriptsWhileDisabled(true) end
+	r.canHelp:SetScript("OnClick", function() GH:CanHelp(r.member) end)
+	r.canHelp:SetScript("OnEnter", function(b) GH:CanHelpTooltip(b, r.member) end)
+	r.canHelp:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	r.canHelp:Hide()
 	r.invite = W.Button(r, L.BTN_INVITE, COL.invite[2], 18)
 	r.invite:SetPoint("LEFT", COL.invite[1], 0)
 	if r.invite.SetMotionScriptsWhileDisabled then r.invite:SetMotionScriptsWhileDisabled(true) end -- tooltip on the grey button
@@ -174,13 +192,25 @@ local function FillRow(r, d)
 	r.header:SetShown(isHeader)
 	for _, k in ipairs({ "name", "rank", "lvl", "zone", "status", "time", "group" }) do r[k]:SetShown(not isHeader) end
 	local mine = d.isSelf or (not isHeader and GH:IsMyChar(d.name)) -- yourself or your alt (Alts.lua)
-	r.whisper:SetShown(not isHeader and not mine)
+	-- 1.0.0-beta.1: on a Need-help row "I can help" takes the Whisper button's slot
+	local helpRow = not isHeader and not mine and not d.noAddon and d.preset == "help"
+	r.whisper:SetShown(not isHeader and not mine and not helpRow)
+	r.canHelp:SetShown(helpRow)
+	if helpRow then
+		local ok = GH:CanHelpState(d.name)
+		r.canHelp:SetEnabled(ok and true or false)
+		r.canHelp:SetGreyed(not ok)
+	end
 	r.invite:SetShown(not isHeader and not mine)
 	r.hl:SetShown(not isHeader)
 	if r.headerLine then r.headerLine:SetShown(isHeader) end
+	r.fold:SetShown(isHeader)
 	if isHeader then
 		local c = GH.GROUP_COLOR[d.header] or W.GOLD
-		r.header:SetText(("%s (%d)"):format(L.GROUP[d.header] or d.header, d.count))
+		local art = W.FoldArt(d.folded)
+		local sign = ""
+		if art then r.fold:SetTexture(art) else sign = d.folded and "+ " or "- "; r.fold:Hide() end
+		r.header:SetText(("%s%s (%d)"):format(sign, L.GROUP[d.header] or d.header, d.count))
 		r.header:SetTextColor(c[1], c[2], c[3])
 		r.bg:SetColorTexture(0, 0, 0, 0)
 		return
@@ -371,15 +401,11 @@ function GH:BuildStatusTab(parent)
 	tab.empty = W.Text(listArea, "GameFontDisable", L.EMPTY_LIST)
 	tab.empty:SetPoint("TOP", 0, -40)
 
-	-- footer
-	-- footer on the window's own background: white count, gold note (grey was hard to read there)
-	tab.footer = W.Text(parent, "GameFontHighlightSmall")
-	tab.footer:SetTextColor(W.COLOR.highlight[1], W.COLOR.highlight[2], W.COLOR.highlight[3])
-	tab.footer:SetPoint("BOTTOMLEFT", 8, 8)
+	-- footer note on the window's own background, gold (grey was hard to read there). The left count
+	-- "N online · M with Guild Hub" was removed in 1.0.0-beta.2: the title bar shows the same numbers.
 	local fr = W.Text(parent, "GameFontNormalSmall", L.FOOTER_RIGHT, "RIGHT")
 	fr:SetTextColor(W.COLOR.normal[1], W.COLOR.normal[2], W.COLOR.normal[3])
-	-- right-aligned to the list's right edge, 400 px wide (the text needs ~230 px; the left footer
-	-- "N online · M with Guild Hub" ends well before x 330, so they never overlap)
+	-- right-aligned to the list's right edge, 400 px wide (the text needs ~230 px)
 	fr:SetPoint("BOTTOMRIGHT", parent, "BOTTOMLEFT", 8 + LIST_W, 8)
 	fr:SetWidth(400)
 	tab.footerRight = fr
@@ -403,8 +429,40 @@ function GH:BuildStatusTab(parent)
 end
 
 ------------------------------------------------------------------------
--- Right side: "Your status"
+-- Right side: "My status" (1.0.0-beta.1, plans\next-beta-2 part 1.1). The parts are placed top to
+-- bottom by UpdateOwnPanel (a y-cursor), so hidden parts leave no gaps:
+--   title, state line, news strip (0-2 lines), Status (preset dropdown, or the 6 buttons without the
+--   dropdown template), Dungeon (LFG only), note box, the one highlighted button (only when it
+--   applies), Lasts + Clear all, ticks from features (myStatus hook), Find me, Pause alerts.
 ------------------------------------------------------------------------
+local PANEL_X, PANEL_W, LABEL_W = 12, 206, 54
+local HOURS = { 1, 2, 4, 8 }
+
+local function HoursText(h) return h == 1 and L.MY_HOURS1 or L.MY_HOURSN:format(h) end
+
+-- A one-line text button (the news strip lines, "Pause alerts 1 h"): no art, highlight on hover.
+local function LineButton(parent, font, width)
+	local b = CreateFrame("Button", nil, parent)
+	b:SetSize(width, 16)
+	local fs = b:CreateFontString(nil, "OVERLAY", font or "GameFontNormalSmall")
+	fs:SetPoint("LEFT", 4, 0)
+	fs:SetWidth(width - 8)
+	fs:SetJustifyH("LEFT")
+	fs:SetWordWrap(false)
+	b.label = fs
+	local hl = b:CreateTexture(nil, "HIGHLIGHT")
+	hl:SetAllPoints()
+	hl:SetColorTexture(1, 0.85, 0.4, 0.12)
+	function b:SetLabel(t) self.label:SetText(t or "") end
+	return b
+end
+
+local function RowLabel(panel, text)
+	local fs = W.Text(panel, "GameFontNormalSmall", text)
+	fs:SetWidth(LABEL_W - 4)
+	return fs
+end
+
 function GH:BuildOwnPanel(parent)
 	local tab = self.statusTab
 	local panel = W.Inset(parent)
@@ -412,34 +470,73 @@ function GH:BuildOwnPanel(parent)
 	panel:SetPoint("BOTTOMRIGHT", -2, 24)
 	tab.panel = panel
 
-	local title = W.Text(panel, "GameFontNormalLarge", L.YOUR_STATUS)
-	title:SetPoint("TOPLEFT", 12, -12)
+	tab.title = W.Text(panel, "GameFontNormalLarge", L.MY_STATUS)
+	tab.title:SetPoint("TOPLEFT", PANEL_X, -12)
 
-	tab.chips = {}
-	for i, p in ipairs(self.PRESETS) do
-		-- two per row, 100 px each, so "Open to chat" fits
-		local b = W.Button(panel, L.PRESET[p], 100, 22)
-		local col, row = (i - 1) % 2, math.floor((i - 1) / 2)
-		b:SetPoint("TOPLEFT", 12 + col * 104, -40 - row * 26)
-		b:SetScript("OnClick", function()
-			GH:HideDungeonPicker()
-			tab.note:ClearFocus()
-			GH:SetPreset(p)
-			GH:UpdateOwnPanel(true) -- the note box follows (cleared when switching presets)
+	-- state line: "LFG: Scholomance · clears in 1 h 40" (old tests know it as clearsIn)
+	tab.state = W.Text(panel, "GameFontNormalSmall")
+	tab.state:SetWidth(PANEL_W)
+	tab.clearsIn = tab.state
+
+	-- news strip: a gold box with up to 2 clickable lines (LFG match first, then the news hook)
+	local news = CreateFrame("Frame", nil, panel, "BackdropTemplate")
+	W.Skin(news, 0.6, 0.18, 0.14, 0.04)
+	news:SetBackdropBorderColor(W.BORDER_ON[1], W.BORDER_ON[2], W.BORDER_ON[3], 1)
+	news:SetWidth(PANEL_W)
+	news.lines = {}
+	for i = 1, 2 do
+		local b = LineButton(news, "GameFontNormalSmall", PANEL_W - 6)
+		b:SetPoint("TOPLEFT", 3, -3 - (i - 1) * 17)
+		b:SetScript("OnClick", function(s) if s.onClick then s.onClick(GH) end end)
+		b:SetScript("OnEnter", function(s)
+			if not s.tip then return end
+			GameTooltip:SetOwner(s, "ANCHOR_LEFT")
+			GameTooltip:AddLine(s.tip, 1, 1, 1, true)
+			GameTooltip:Show()
 		end)
-		tab.chips[p] = b
+		b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		news.lines[i] = b
 	end
+	news:Hide()
+	tab.news = news
 
-	tab.dungeon = self:MakeDungeonPicker(panel)
-	tab.dungeon:SetPoint("TOPLEFT", 12, -124)
-
-	local note = W.EditBox(panel, 206, 24, self.NOTE_LETTERS, L.NOTE_HINT)
-	if note.ghTemplate then -- the input box art reaches 5 px past its left edge
-		note:SetWidth(198)
-		note:SetPoint("TOPLEFT", 18, -154)
+	-- Status: one preset dropdown, else the six buttons (2 per row)
+	tab.lblStatus = RowLabel(panel, L.MY_LBL_STATUS)
+	tab.chips = {}
+	local preset = W.Dropdown(panel, PANEL_W - LABEL_W)
+	if preset then
+		preset:SetupMenu(function(_, root)
+			root:CreateRadio(L.MY_PRESET_NONE, function()
+				local own = GH:GetOwnStatus() or {}
+				return not (GH:IsStatusFresh(own) and own.p)
+			end, function() GH:PickPreset(nil) end)
+			for _, p in ipairs(GH.PRESETS) do
+				root:CreateRadio(L.PRESET[p], function()
+					local own = GH:GetOwnStatus() or {}
+					return GH:IsStatusFresh(own) and own.p == p
+				end, function() GH:PickPreset(p) end)
+			end
+		end)
+		tab.preset = preset
 	else
-		note:SetPoint("TOPLEFT", 12, -152)
+		for _, p in ipairs(self.PRESETS) do
+			local b = W.Button(panel, L.PRESET[p], 100, 22)
+			b:SetScript("OnClick", function()
+				GH:HideDungeonPicker()
+				tab.note:ClearFocus()
+				GH:SetPreset(p)
+				GH:UpdateOwnPanel(true) -- the note box follows (cleared when switching presets)
+			end)
+			tab.chips[p] = b
+		end
 	end
+
+	tab.lblDungeon = RowLabel(panel, L.MY_LBL_DUNGEON)
+	tab.dungeon = self:MakeDungeonPicker(panel)
+	if tab.dungeon.isDropdown then tab.dungeon:SetWidth(PANEL_W - LABEL_W) end
+
+	local note = W.EditBox(panel, PANEL_W, 24, self.NOTE_LETTERS, L.NOTE_HINT)
+	if note.ghTemplate then note:SetWidth(PANEL_W - 8) end -- the input box art reaches 5 px past its left edge
 	note:SetScript("OnEnterPressed", function(s)
 		GH:SetStatusText(s:GetText())
 		s:ClearFocus()
@@ -454,44 +551,61 @@ function GH:BuildOwnPanel(parent)
 	tab.note = note
 
 	tab.noteHint = W.Text(panel, "GameFontNormalSmall", L.NOTE_UNSENT)
-	tab.noteHint:SetPoint("TOPLEFT", 14, -179)
 	tab.noteHint:Hide()
 
-	tab.clearsIn = W.Text(panel, "GameFontDisableSmall")
-	tab.clearsIn:SetPoint("TOPLEFT", 14, -194)
-	tab.clearsIn:SetWidth(204)
-
-	local lasts = W.Button(panel, "", 100, 22)
-	lasts:SetPoint("TOPLEFT", 12, -212)
-	lasts:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-	lasts:SetScript("OnClick", function(_, button)
-		GH:CycleStatusHours(button == "RightButton" and -1 or 1)
-		GH:UpdateOwnPanel() -- label and "Clears in" change at once (the list follows 0.3 s later)
-	end)
-	lasts:SetScript("OnEnter", function(s)
-		GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
-		GameTooltip:AddLine(L.LASTS_TIP, 1, 1, 1, true)
+	-- the one highlighted button: "Found a group? Clear LFG" / "Got help? Clear Need help" /
+	-- "LFG again: X". It only ever acts on its own click (tos-check item 1).
+	local hi = W.Button(panel, "", PANEL_W, 24, "GameFontNormalSmall")
+	hi:SetScript("OnClick", function() GH:OwnHighlightClick() end)
+	hi:SetScript("OnEnter", function(s)
+		if not s.tip then return end
+		GameTooltip:SetOwner(s, "ANCHOR_LEFT")
+		GameTooltip:AddLine(s.tip, 1, 1, 1, true)
 		GameTooltip:Show()
 	end)
-	lasts:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	hi:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	hi:Hide()
+	tab.highlight = hi
+
+	-- Lasts: a 1/2/4/8 h dropdown, else the old cycling button
+	tab.lblLasts = RowLabel(panel, L.MY_LBL_LASTS)
+	local lasts = W.Dropdown(panel, 90)
+	if lasts then
+		lasts:SetupMenu(function(_, root)
+			for _, h in ipairs(HOURS) do
+				root:CreateRadio(HoursText(h), function() return GH:OwnHours() == h end, function()
+					GH:SetStatusHours(h)
+					GH:UpdateOwnPanel()
+				end)
+			end
+		end)
+		W.Tooltip(lasts, L.MY_LASTS_TIP)
+	else
+		lasts = W.Button(panel, "", 100, 22)
+		lasts:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+		lasts:SetScript("OnClick", function(_, button)
+			GH:CycleStatusHours(button == "RightButton" and -1 or 1)
+			GH:UpdateOwnPanel() -- label and "Clears in" change at once (the list follows 0.3 s later)
+		end)
+		lasts:SetScript("OnEnter", function(s)
+			GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+			GameTooltip:AddLine(L.LASTS_TIP, 1, 1, 1, true)
+			GameTooltip:Show()
+		end)
+		lasts:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	end
 	tab.lasts = lasts
 
-	local clear = W.Button(panel, L.BTN_CLEAR, 64, 22)
-	clear:SetPoint("TOPRIGHT", panel, "TOPLEFT", 216, -212)
-	clear:SetScript("OnClick", function()
-		tab.note:SetText("")
-		GH:ClearStatus()
-		GH:UpdateOwnPanel(true)
-	end)
+	-- Clear all: the preset, the note and any ticks
+	local clear = W.Button(panel, L.BTN_CLEAR_ALL, 76, 22, "GameFontNormalSmall")
+	clear:SetScript("OnClick", function() GH:ClearAllOwn() end)
+	W.Tooltip(clear, L.MY_CLEAR_ALL_TIP)
 	tab.clear = clear
 
-	tab.autoAct = W.Text(panel, "GameFontHighlightSmall")
-	tab.autoAct:SetPoint("TOPLEFT", 14, -246)
-	tab.autoAct:SetWidth(206)
+	tab.ticks = {} -- myStatus hook ticks, made when a feature first adds one
 
 	-- 0.6.0 "Find me" (Features\Map.lua): click only; greyed with the reason in its tooltip
-	local find = W.Button(panel, L.FIND_BUTTON, 100, 22)
-	find:SetPoint("BOTTOMLEFT", 12, 12)
+	local find = W.Button(panel, L.FIND_BUTTON, PANEL_W, 22)
 	if find.SetMotionScriptsWhileDisabled then find:SetMotionScriptsWhileDisabled(true) end
 	find:SetScript("OnClick", function() GH:FindMe() end)
 	find:SetScript("OnEnter", function(s)
@@ -504,7 +618,93 @@ function GH:BuildOwnPanel(parent)
 	end)
 	find:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	tab.findMe = find
+
+	-- "... Pause alerts 1 h", or "Alerts paused · 42 min left" + Resume
+	local pause = LineButton(panel, "GameFontNormalSmall", PANEL_W)
+	pause:SetLabel("... " .. L.MY_PAUSE)
+	pause:SetScript("OnClick", function() GH:PauseAlerts() end)
+	W.Tooltip(pause, L.MY_PAUSE_TIP)
+	tab.pause = pause
+	tab.paused = W.Text(panel, "GameFontHighlightSmall")
+	tab.paused:SetWidth(PANEL_W - 70)
+	local resume = W.Button(panel, L.MY_RESUME, 64, 20, "GameFontNormalSmall")
+	resume:SetScript("OnClick", function() GH:ResumeAlerts() end)
+	tab.resume = resume
+
+	tab.autoAct = W.Text(panel, "GameFontDisableSmall")
+	tab.autoAct:SetPoint("BOTTOMLEFT", PANEL_X + 2, 10)
+	tab.autoAct:SetWidth(PANEL_W)
+
 	self:UpdateFindButton()
+end
+
+-- The preset dropdown's pick: nil = "No status" (the current preset off); the current one = nothing.
+function GH:PickPreset(p)
+	local own = self:GetOwnStatus() or {}
+	local cur = self:IsStatusFresh(own) and own.p or nil
+	if p == cur then return end
+	self:HideDungeonPicker()
+	if self.statusTab and self.statusTab.note then self.statusTab.note:ClearFocus() end
+	self:SetPreset(p or cur)
+	self:UpdateOwnPanel(true)
+end
+
+-- Clear all (a click only): status, note and every myStatus tick.
+function GH:ClearAllOwn()
+	local tab = self.statusTab
+	if tab and tab.note then tab.note:SetText("") end
+	self:ClearStatus()
+	for _, e in ipairs(self:Hooks("myStatus")) do
+		if type(e.set) == "function" and type(e.get) == "function" and e.get(self) then pcall(e.set, self, false) end
+	end
+	self:UpdateOwnPanel(true)
+end
+
+-- Which highlighted button applies now: "found_lfg", "found_help", "again" or nil (and the label).
+function GH:OwnHighlight()
+	local kind = self:FoundGroupKind()
+	if kind == "lfg" then return "found_lfg", L.MY_FOUND_LFG end
+	if kind == "help" then return "found_help", L.MY_FOUND_HELP end
+	local own = self:GetOwnStatus() or {}
+	if not (self:IsStatusFresh(own) and own.p) then
+		local l = self:LastLfg()
+		if l then
+			return "again", L.MY_LFG_AGAIN:format(l.d > 0 and self:DungeonName(l.d) or L.LFG_ANY), L.MY_LFG_AGAIN_TIP
+		end
+	end
+	return nil
+end
+
+-- The highlighted button's click: the state is checked again here, then one action.
+function GH:OwnHighlightClick()
+	local which = self:OwnHighlight()
+	if which == "found_lfg" or which == "found_help" then
+		self:ClearFoundGroup()
+	elseif which == "again" then
+		self:LfgAgain()
+	end
+	self:UpdateOwnPanel(true)
+end
+
+-- The news strip's lines: the LFG match first, then features' news hook entries (by order). At most 2.
+function GH:NewsLines()
+	local lines = {}
+	local list, d = self:LfgMatches()
+	if d and #list > 0 then
+		local dn = self:DungeonName(d)
+		lines[1] = { text = #list == 1 and L.NEWS_MATCH1:format(dn) or L.NEWS_MATCHN:format(#list, dn),
+			tip = L.NEWS_MATCH_TIP, onClick = function(gh) gh:ShowLfgMatch() end }
+	end
+	local hooked = self:Hooks("news")
+	table.sort(hooked, function(a, b) return (tonumber(a.order) or 99) < (tonumber(b.order) or 99) end)
+	for _, e in ipairs(hooked) do
+		if #lines >= 2 then break end
+		local ok, text = pcall(e.fn, self)
+		if ok and type(text) == "string" and not U.IsSecret(text) and text ~= "" then
+			lines[#lines + 1] = { text = U.CleanText(text, 60), tip = e.tip, onClick = e.onClick }
+		end
+	end
+	return lines
 end
 
 -- The Find me button: hidden while the map feature is off, greyed while it can't be used.
@@ -526,6 +726,11 @@ local function DungeonLabel(i)
 	return ("%s (%d-%d)"):format(e.name, e.min, e.max)
 end
 
+-- 1.0.0-beta.1: the picker's entries in order (any, dungeons by level, raids last; hidden raids left out).
+local function DungeonOrder()
+	return GH.DUNGEON_ORDER or {}
+end
+
 -- The Dungeon picker: a WowStyle1Dropdown menu (2 columns when this client's menus can do a grid,
 -- else one list that scrolls), or the old button + our own 2-column list.
 function GH:MakeDungeonPicker(panel)
@@ -536,7 +741,7 @@ function GH:MakeDungeonPicker(panel)
 			if not (grid and pcall(root.SetGridMode, root, MenuConstants.VerticalGridDirection, 2)) then
 				if root.SetScrollMode then pcall(root.SetScrollMode, root, 400) end
 			end
-			for i = 0, #GH.DUNGEONS do
+			for _, i in ipairs(DungeonOrder()) do
 				root:CreateRadio(DungeonLabel(i), function()
 					local own = GH:GetOwnStatus() or {}
 					return (own.d or 0) == i
@@ -577,15 +782,15 @@ function GH:ToggleDungeonPicker(anchor)
 		pick = CreateFrame("Frame", nil, self.mainFrame, "BackdropTemplate")
 		W.Skin(pick, 0.98)
 		pick:SetFrameStrata("DIALOG")
-		local n = #self.DUNGEONS + 1
-		local perCol = math.ceil(n / 2)
+		local order = DungeonOrder()
+		local perCol = math.ceil(#order / 2)
 		pick:SetSize(2 * 196 + 12, perCol * 18 + 12)
-		for i = 0, #self.DUNGEONS do
+		for pos, i in ipairs(order) do
 			local b = W.PlainButton(pick, DungeonLabel(i), 192, 17)
 			b:SetBackdropBorderColor(0, 0, 0, 0)
 			b.label:ClearAllPoints()
 			b.label:SetPoint("LEFT", 6, 0)
-			local col, row = math.floor(i / perCol), i % perCol
+			local col, row = math.floor((pos - 1) / perCol), (pos - 1) % perCol
 			b:SetPoint("TOPLEFT", 6 + col * 196, -6 - row * 18)
 			b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 			b:SetScript("OnClick", function(_, button)
@@ -606,39 +811,304 @@ function GH:ToggleDungeonPicker(anchor)
 	pick:Show()
 end
 
+-- Places one part at the cursor (x from the panel's left) and moves the cursor down.
+local function Place(panel, part, x, y)
+	part:ClearAllPoints()
+	part:SetPoint("TOPLEFT", panel, "TOPLEFT", x, y)
+end
+
 function GH:UpdateOwnPanel(resetNote)
 	local tab = self.statusTab
 	if not tab then return end
+	local panel = tab.panel
 	local own = self:GetOwnStatus() or {}
 	local fresh = self:IsStatusFresh(own)
-	for p, b in pairs(tab.chips) do b:SetActive(fresh and own.p == p) end
-	local lfg = fresh and own.p == "lfg"
+	local p = fresh and own.p or nil
+	local y = -34
+
+	-- state line
+	if p and own.st then
+		local head = L.PRESET[p] or p
+		if p == "lfg" and own.d and own.d > 0 then head = head .. ": " .. self:DungeonName(own.d) end
+		local left = U.Duration(math.max(0, self:StatusDuration(own) - (U.Now() - own.st)))
+		tab.state:SetText(L.MY_STATE:format(head, left))
+		local c = self.GROUP_COLOR[p] or self.GROUP_COLOR.other
+		tab.state:SetTextColor(c[1], c[2], c[3])
+	elseif fresh and own.t and own.st then
+		tab.state:SetText(L.CLEARS_IN:format(U.Duration(math.max(0, self:StatusDuration(own) - (U.Now() - own.st)))))
+		tab.state:SetTextColor(0.85, 0.85, 0.85)
+	else
+		tab.state:SetText(L.NO_STATUS)
+		tab.state:SetTextColor(0.6, 0.6, 0.6)
+	end
+	Place(panel, tab.state, PANEL_X + 2, y)
+	y = y - 18
+
+	-- news strip
+	local lines = self:NewsLines()
+	tab.newsCount = #lines
+	for i, b in ipairs(tab.news.lines) do
+		local e = lines[i]
+		b:SetShown(e ~= nil)
+		if e then
+			b:SetLabel(e.text)
+			b.onClick, b.tip = e.onClick, e.tip
+		end
+	end
+	tab.news:SetShown(#lines > 0)
+	if #lines > 0 then
+		tab.news:SetHeight(6 + 17 * #lines)
+		Place(panel, tab.news, PANEL_X, y)
+		y = y - (6 + 17 * #lines) - 8
+	end
+
+	-- Status
+	if tab.preset then
+		Place(panel, tab.lblStatus, PANEL_X, y - 6)
+		Place(panel, tab.preset, PANEL_X + LABEL_W, y)
+		tab.preset:SetLabel(p and L.PRESET[p] or L.MY_PRESET_NONE)
+		tab.lblStatus:Show()
+		y = y - 28
+	else
+		tab.lblStatus:Hide()
+		for i, pk in ipairs(self.PRESETS) do
+			local b = tab.chips[pk]
+			local col, row = (i - 1) % 2, math.floor((i - 1) / 2)
+			Place(panel, b, PANEL_X + col * 104, y - row * 26)
+			b:SetActive(p == pk)
+		end
+		y = y - 3 * 26 - 4
+	end
+
+	-- Dungeon (LFG only)
+	local lfg = p == "lfg"
 	if not lfg then self:HideDungeonPicker() end
 	tab.dungeon:SetShown(lfg)
-	if lfg then tab.dungeon:SetLabel(L.DUNGEON_FMT:format(self:DungeonName(own.d))) end
-	-- Refresh the box only if the player hasn't typed something unsent into it (the regular redraws
-	-- must never wipe typing; the "Press Enter to share" hint covers that case).
+	tab.lblDungeon:SetShown(lfg and tab.dungeon.isDropdown or false)
+	if lfg then
+		if tab.dungeon.isDropdown then
+			Place(panel, tab.lblDungeon, PANEL_X, y - 6)
+			Place(panel, tab.dungeon, PANEL_X + LABEL_W, y)
+			tab.dungeon:SetLabel(self:DungeonName(own.d))
+		else
+			Place(panel, tab.dungeon, PANEL_X, y)
+			tab.dungeon:SetLabel(L.DUNGEON_FMT:format(self:DungeonName(own.d)))
+		end
+		y = y - 28
+	end
+
+	-- note box. Refresh it only if the player hasn't typed something unsent into it (the regular
+	-- redraws must never wipe typing; the "Press Enter to share" hint covers that case).
+	Place(panel, tab.note, tab.note.ghTemplate and PANEL_X + 6 or PANEL_X, y)
+	y = y - 28
 	local typed = tab.note:GetText()
 	if resetNote or (not tab.note:HasFocus() and typed == (tab.noteShown or "")) then
 		tab.noteShown = fresh and own.t or ""
 		tab.note:SetText(tab.noteShown)
 	end
+	Place(panel, tab.noteHint, PANEL_X + 2, y + 2)
 	self:UpdateNoteHint()
-	tab.lasts:SetLabel(L.LASTS_FMT:format(self:OwnHours()))
+	if tab.noteHint:IsShown() then y = y - 14 end
+
+	-- the highlighted button (only when it applies)
+	local which, label, tip = self:OwnHighlight()
+	tab.highlightKind = which
+	tab.highlight:SetShown(which ~= nil)
+	if which then
+		tab.highlight:SetLabel(label)
+		tab.highlight.tip = tip
+		tab.highlight:SetActive(true)
+		Place(panel, tab.highlight, PANEL_X, y - 2)
+		y = y - 32
+	end
+
+	-- Lasts + Clear all
+	local hasTick = false
+	for _, e in ipairs(self:Hooks("myStatus")) do
+		if type(e.get) == "function" then
+			local ok, on = pcall(e.get, self)
+			if ok and on then hasTick = true end
+		end
+	end
+	if tab.lasts.isDropdown then
+		Place(panel, tab.lblLasts, PANEL_X, y - 6)
+		Place(panel, tab.lasts, PANEL_X + LABEL_W - 14, y)
+		tab.lblLasts:Show()
+		tab.lasts:SetLabel(HoursText(self:OwnHours()))
+	else
+		tab.lblLasts:Hide()
+		Place(panel, tab.lasts, PANEL_X, y)
+		tab.lasts:SetLabel(L.LASTS_FMT:format(self:OwnHours()))
+	end
 	tab.lasts:SetEnabled(fresh) -- nothing to apply it to without a status
 	if tab.lasts.plain then tab.lasts:SetAlpha(fresh and 1 or 0.45) end -- the red button greys itself
-	if fresh and own.st then
-		tab.clearsIn:SetText(L.CLEARS_IN:format(U.Duration(math.max(0, self:StatusDuration(own) - (U.Now() - own.st)))))
-	else
-		tab.clearsIn:SetText(L.NO_STATUS)
+	tab.clear:ClearAllPoints()
+	tab.clear:SetPoint("TOPRIGHT", panel, "TOPLEFT", PANEL_X + PANEL_W, y)
+	tab.clear:SetShown(fresh or hasTick)
+	y = y - 30
+
+	-- ticks from features (myStatus hook): { key, text, get, set, why }
+	local n = 0
+	for _, e in ipairs(self:Hooks("myStatus")) do
+		if type(e.text) == "string" and type(e.get) == "function" and type(e.set) == "function" then
+			n = n + 1
+			local cb = tab.ticks[n]
+			if not cb then
+				cb = W.CheckButton(panel, "", PANEL_W)
+				cb:SetScript("OnClick", function(s)
+					local entry = s.entry
+					if not entry then return end
+					local okG, on = pcall(entry.get, GH)
+					pcall(entry.set, GH, not (okG and on))
+					GH:UpdateOwnPanel()
+				end)
+				cb:SetScript("OnEnter", function(s)
+					local why = s.entry and s.entry.why
+					if type(why) ~= "string" then return end
+					GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+					GameTooltip:AddLine(why, 1, 1, 1, true)
+					GameTooltip:Show()
+				end)
+				cb:SetScript("OnLeave", function() GameTooltip:Hide() end)
+				tab.ticks[n] = cb
+			end
+			cb.entry = e
+			if cb.label then cb.label:SetText(e.text) end
+			local okG, on = pcall(e.get, self)
+			cb:SetActive(okG and on and true or false)
+			Place(panel, cb, PANEL_X, y)
+			cb:Show()
+			y = y - 26
+		end
 	end
-	tab.clear:SetShown(fresh)
+	for i = n + 1, #tab.ticks do tab.ticks[i]:Hide() end
+
+	-- Find me
+	Place(panel, tab.findMe, PANEL_X, y - 4)
+	y = y - 32
+
+	-- Pause alerts / paused + Resume
+	local left = self.AlertsPausedLeft and self:AlertsPausedLeft() or 0
+	tab.pause:SetShown(left <= 0)
+	tab.paused:SetShown(left > 0)
+	tab.resume:SetShown(left > 0)
+	if left > 0 then
+		tab.paused:SetText(L.MY_PAUSED:format(U.Duration(left)))
+		Place(panel, tab.paused, PANEL_X + 2, y - 4)
+		tab.resume:ClearAllPoints()
+		tab.resume:SetPoint("TOPRIGHT", panel, "TOPLEFT", PANEL_X + PANEL_W, y + 1)
+	else
+		Place(panel, tab.pause, PANEL_X, y)
+	end
+	tab.layoutBottom = y - 20
+
 	if not self.db.profile.autoActivity then
 		tab.autoAct:SetText(L.AUTO_ACT_OFF)
 	else
 		tab.autoAct:SetText(L.AUTO_ACT_FMT:format(own.a and L.ACT[own.a] or L.AUTO_ACT_NONE))
 	end
 	self:UpdateFindButton()
+	if self.lfgMatch and self.lfgMatch:IsShown() then self:FillLfgMatch() end
+end
+
+------------------------------------------------------------------------
+-- 1.0.0-beta.1 LFG match pop-up: who else wants the same dungeon, one Invite per row
+-- (tos-check item 2: one InviteUnit per click, from the click only; greyed in combat, for ignored or
+-- muted players, and for players already in your group or in a full group).
+------------------------------------------------------------------------
+local MATCH_ROWS = 8
+local MATCH_W = 320
+
+function GH:ShowLfgMatch()
+	local f = self.lfgMatch
+	if not f then
+		f = W.Popup("GuildHubLfgMatch", self.mainFrame or UIParent)
+		f:SetSize(MATCH_W, 60 + MATCH_ROWS * 22)
+		f:SetFrameStrata("DIALOG")
+		f:SetToplevel(true)
+		f:EnableMouse(true)
+		f.title = W.Text(f, "GameFontNormal")
+		f.title:SetPoint("TOPLEFT", 14, -12)
+		f.title:SetWidth(MATCH_W - 50)
+		local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+		close:SetPoint("TOPRIGHT", -2, -2)
+		f.closeButton = close
+		f.hint = W.Text(f, "GameFontDisableSmall", L.MATCH_HINT)
+		f.hint:SetPoint("BOTTOMLEFT", 14, 10)
+		f.rows = {}
+		for i = 1, MATCH_ROWS do
+			local r = CreateFrame("Button", nil, f)
+			r:SetSize(MATCH_W - 24, 20)
+			r:SetPoint("TOPLEFT", 12, -34 - (i - 1) * 22)
+			r:RegisterForClicks("RightButtonUp")
+			local hl = r:CreateTexture(nil, "HIGHLIGHT")
+			hl:SetAllPoints()
+			hl:SetColorTexture(1, 1, 1, 0.06)
+			r.name = W.Text(r, "GameFontHighlightSmall")
+			r.name:SetPoint("LEFT", 2, 0)
+			r.name:SetWidth(90)
+			r.lvl = W.Text(r, "GameFontHighlightSmall", nil, "RIGHT")
+			r.lvl:SetPoint("LEFT", 92, 0)
+			r.lvl:SetWidth(20)
+			r.note = W.Text(r, "GameFontDisableSmall")
+			r.note:SetPoint("LEFT", 120, 0)
+			r.note:SetWidth(MATCH_W - 24 - 120 - 64)
+			r.invite = W.Button(r, L.BTN_INVITE, 56, 18, "GameFontNormalSmall")
+			r.invite:SetPoint("RIGHT", 0, 0)
+			if r.invite.SetMotionScriptsWhileDisabled then r.invite:SetMotionScriptsWhileDisabled(true) end
+			r.invite:SetScript("OnClick", function()
+				if r.member and GH:InviteMatch(r.member) then GH:FillLfgMatch() end
+			end)
+			r.invite:SetScript("OnEnter", function(s)
+				local ok, why = GH:LfgMatchState(r.member)
+				if ok then return end
+				GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+				GameTooltip:AddLine(L.BTN_INVITE, 1, 0.82, 0)
+				local text = why == "ingroupthem" and L.INVITE_IN_GROUP or L.ACT_WHY[why] or why
+				GameTooltip:AddLine((text:gsub("%%d", "0")), 1, 0.3, 0.3, true)
+				GameTooltip:Show()
+			end)
+			r.invite:SetScript("OnLeave", function() GameTooltip:Hide() end)
+			r:SetScript("OnClick", function(s, button)
+				if button == "RightButton" and s.member and GH.ShowNameMenu then GH:ShowNameMenu(s, s.member, "match") end
+			end)
+			f.rows[i] = r
+		end
+		f:SetScript("OnHide", function() GameTooltip:Hide() end)
+		self.lfgMatch = f
+	end
+	f:ClearAllPoints()
+	local panel = self.statusTab and self.statusTab.panel
+	if panel and panel:IsVisible() then
+		f:SetPoint("TOPRIGHT", panel, "TOPLEFT", -6, 0)
+	else
+		f:SetPoint("CENTER")
+	end
+	self:FillLfgMatch()
+	f:Show()
+end
+
+function GH:FillLfgMatch()
+	local f = self.lfgMatch
+	if not f then return end
+	local list, d = self:LfgMatches()
+	if not d or #list == 0 then f:Hide() return end
+	local dn = self:DungeonName(d)
+	f.title:SetText(#list == 1 and L.NEWS_MATCH1:format(dn) or L.NEWS_MATCHN:format(#list, dn))
+	for i, r in ipairs(f.rows) do
+		local m = list[i]
+		r.member = m and m.name
+		r:SetShown(m ~= nil)
+		if m then
+			r.name:SetText(U.ClassColored(m.name, m.class))
+			r.lvl:SetText(tostring(m.level or "?"))
+			r.note:SetText(m.note or L.MATCH_NONOTE) -- cleaned when received, never holds | codes
+			local ok = self:LfgMatchState(m.name)
+			r.invite:SetEnabled(ok and true or false)
+			r.invite:SetGreyed(not ok)
+		end
+	end
+	f:SetHeight(60 + math.min(#list, MATCH_ROWS) * 22)
 end
 
 -- "Press Enter to share" while the note box holds text that isn't shared yet.
@@ -660,11 +1130,15 @@ function GH:DrawStatusTab()
 	local db = self.db.profile
 	tab.sort:SetLabel(L.SORT_FMT:format(L.SORT[db.sort] or db.sort))
 	tab.compact:SetActive(db.compact)
-	local rows, online, withAddon = self:BuildStatusRows({
+	local rows, online = self:BuildStatusRows({
 		search = tab.search:GetText(), sort = db.sort, compact = db.compact, showNoAddon = db.showNoAddon,
+		folded = db.folded,
 	})
 	tab.data = rows
-	tab.footer:SetText(L.FOOTER:format(online, withAddon))
+	-- 1.0.0-beta.2 (Q8): the empty list says why
+	local searching = (tab.search:GetText() or "") ~= ""
+	tab.empty:SetText((not self.rosterReady and L.EMPTY_WAIT) or (searching and L.EMPTY_SEARCH)
+		or (db.compact and L.EMPTY_LFG) or (not db.showNoAddon and online > 0 and L.EMPTY_NOADDON) or L.EMPTY_LIST)
 	if tab.scrollBox then
 		-- the ScrollBox reuses its row frames; stay in place unless the search/filter changed
 		W.SetListData(tab.scrollBox, rows, not tab.toTop)
@@ -680,6 +1154,15 @@ function GH:DrawStatusTab()
 		self:DrawRows()
 	end
 	self:UpdateOwnPanel()
+end
+
+-- 1.0.0-beta.2 (Q5): fold / open one group of the board (saved per profile, local only).
+function GH:ToggleFold(group)
+	if type(group) ~= "string" or not (self.GROUP_COLOR and self.GROUP_COLOR[group]) then return end
+	local db = self.db.profile
+	if type(db.folded) ~= "table" then db.folded = {} end
+	db.folded[group] = (not db.folded[group]) or nil
+	self:DrawStatusTab()
 end
 
 -- Our own rows (only when the ScrollBox list isn't available).

@@ -11,9 +11,10 @@ local _, ns = ...
 local GH, L, U = ns.GH, ns.L, ns.Util
 
 local LOG_WAIT = 5 -- seconds to wait for GUILD_EVENT_LOG_UPDATE / UPDATE_INSTANCE_INFO
--- quest IDs: Attunement to the Core (Molten Core), Blackhand's Command (Blackwing Lair),
+-- quest IDs (1.0.0-beta.1: WoW Forever has no MC or BWL, so their attunements are gone; Barrow Deeps /
+-- Hyjal Summit quest IDs aren't known yet):
 -- Drakefire Amulet (Onyxia, Alliance) / Blood of the Black Dragon Champion (Onyxia, Horde)
-local QUESTS = { 7848, 7761, 6502, 6602 }
+local QUESTS = { 6502, 6602 }
 -- spell IDs: Ritual of Summoning; Portal: Stormwind; Portal: Orgrimmar
 local SPELLS = { 698, 10059, 11417 }
 -- 0.4.0-b3 controls, so a "n" can be told apart from a check that never works:
@@ -309,6 +310,8 @@ Check("emote", function()
 end)
 Check("fish", function() return Exists(IsFishingLoot) end)
 -- 0.4.0-b2: HereBeDragons loaded, its pins on the world map, and the ignore check on our own name
+-- 1.0.0-beta.1: new instances entered this session (ID@map:x,y of the spot before going in; memory only)
+Check("newdng", function() return GH:NewDungeonText(true) end)
 Check("hbd", function()
 	local core = LibStub and LibStub("HereBeDragons-2.0", true)
 	local pins = LibStub and LibStub("HereBeDragons-Pins-2.0", true)
@@ -448,6 +451,97 @@ GH:On("wsec", "CHAT_MSG_WHISPER", CountWhisper)
 Check("wsec", function()
 	return ("%d:%d/%d,%d/%d,%d/%d,g%d"):format(wsec.n, wsec.normal[1], wsec.normal[2], wsec.combat[1], wsec.combat[2],
 		wsec.inst[1], wsec.inst[2], wsec.guid)
+end)
+
+------------------------------------------------------------------------
+-- 1.0.0-beta.2 probes (plans\next-beta-3 PLAN.md "Probes", tos-check.md: all read-only). None of them
+-- sends, searches, opens or inspects anything; no name or chat text is printed or kept.
+------------------------------------------------------------------------
+local function Valid(event)
+	if not (C_EventUtils and C_EventUtils.IsEventValid) then return "-" end
+	local ok, v = Call(C_EventUtils.IsEventValid, event)
+	return ok == true and yn(v) or ok
+end
+-- grecipe: guild recipe lookup functions exist (never called: a query would ask the server) + its event
+Check("grecipe", function()
+	return Has(C_GuildInfo, "QueryGuildMembersForRecipe") .. "," .. Exists(GetGuildRecipeMember) .. ","
+		.. Valid("GUILD_RECIPE_KNOWN_BY_MEMBERS")
+end)
+-- lfgnames: the LFG list result functions; only if results are ALREADY there (no search is started),
+-- ONE result's leader name is reported as name / secret / nil (the name itself never)
+Check("lfgnames", function()
+	local a = Has(C_LFGList, "GetSearchResults") .. Has(C_LFGList, "GetSearchResultInfo")
+	local ok, n, list = Call(C_LFGList and C_LFGList.GetSearchResults)
+	if ok ~= true then return a .. "," .. ok end
+	local id = type(list) == "table" and list[1]
+	if type(n) ~= "number" or n < 1 or id == nil then return a .. ",0" end
+	local okI, info = pcall(C_LFGList.GetSearchResultInfo, id)
+	if not okI then return a .. "," .. n .. ",!" end
+	if Secret(info) then return a .. "," .. n .. ",secret" end
+	local leader = type(info) == "table" and info.leaderName
+	local kind = Secret(leader) and "secret" or (type(leader) == "string" and "name" or "nil")
+	return a .. "," .. n .. "," .. kind
+end)
+-- gbui: GetNumGuildBankTabs (type:value), Blizzard's bank addon info, the bank-opened event (the
+-- older `gbank` key stays as it was)
+Check("gbui", function()
+	local okN, n = Call(GetNumGuildBankTabs)
+	local tabs = okN == true and (type(n) .. ":" .. tostring(type(n) == "number" and n or "-")) or okN
+	local okA, name, _, _, loadable, reason = Call(C_AddOns and C_AddOns.GetAddOnInfo, "Blizzard_GuildBankUI")
+	local addon = okA == true and (yn(type(name) == "string") .. (loadable and "L" or "") .. (reason and ("/" .. tostring(reason)) or "")) or okA
+	return tabs .. "," .. addon .. "," .. Valid("GUILDBANKFRAME_OPENED")
+end)
+-- gchat: guild / officer chat lines seen this session and how many were secret (counts only;
+-- no text, author or GUID is kept or compared). Line: gchat=guild seen:secret,officer seen:secret
+local gchat = { g = { 0, 0 }, o = { 0, 0 } }
+GH.gchatStats = gchat
+local function CountGuildChat(event, text, author)
+	local c = event == "CHAT_MSG_OFFICER" and gchat.o or gchat.g
+	c[1] = c[1] + 1
+	if Secret(text) or Secret(author) then c[2] = c[2] + 1 end
+end
+GH:On("gchat", "CHAT_MSG_GUILD", CountGuildChat)
+GH:On("gchat", "CHAT_MSG_OFFICER", CountGuildChat)
+Check("gchat", function()
+	return ("%d:%d,%d:%d"):format(gchat.g[1], gchat.g[2], gchat.o[1], gchat.o[2])
+end)
+-- talents: own points per tree ("31/20/0"); only this character, nobody is inspected
+Check("talents", function()
+	local okN, n = Call(GetNumTalentTabs)
+	if okN ~= true then return okN end
+	if type(n) ~= "number" or n < 1 then return "0" end
+	local pts = {}
+	for i = 1, math.min(n, 5) do
+		local ok, a, _, c, _, e = Call(GetTalentTabInfo, i)
+		if ok ~= true then pts[#pts + 1] = ok
+		else
+			-- classic order: name, icon, points, file; newer: id, name, description, icon, points
+			local p = type(a) == "string" and c or e
+			pts[#pts + 1] = type(p) == "number" and tostring(p) or "?"
+		end
+	end
+	return table.concat(pts, "/")
+end)
+-- logging: type of LoggingCombat, is that global still Blizzard's, and C_ChatInfo.IsLoggingCombat()
+-- (a pure read). LoggingCombat itself is NEVER called (tos: not even without an argument).
+Check("logging", function()
+	local t = type(LoggingCombat)
+	local sec = "-"
+	if type(issecurevariable) == "function" then
+		local ok, s = pcall(issecurevariable, "LoggingCombat")
+		sec = ok and yn(s) or "!"
+	end
+	local okL, on = Call(C_ChatInfo and C_ChatInfo.IsLoggingCombat)
+	return t .. "," .. sec .. "," .. (okL == true and yn(on) or okL)
+end)
+-- n6: the guild rank slash commands exist (promote/demote/remove) and the rank checks exist (only
+-- type(): this test calls none of them; the name menu asks Can* when it is built)
+Check("n6", function()
+	local s = ""
+	for _, k in ipairs({ "SLASH_GUILD_PROMOTE1", "SLASH_GUILD_DEMOTE1", "SLASH_GUILD_UNINVITE1" }) do
+		s = s .. (type(_G[k]) == "string" and "y" or "-")
+	end
+	return s .. "," .. Exists(CanGuildPromote) .. Exists(CanGuildDemote) .. Exists(CanGuildRemove)
 end)
 GH.API_CHECKS = checks
 

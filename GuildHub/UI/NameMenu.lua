@@ -17,7 +17,7 @@ local _, ns = ...
 local GH, L, U = ns.GH, ns.L, ns.Util
 local W = ns.Widgets
 
-local MAX_TOP = 8 -- top entries before the officer section (plan sec. 1: "at most about 8")
+local MAX_TOP = 9 -- top entries before the officer section (plan sec. 1: "at most about 8"; 9 with "I can help")
 GH.NAME_MENU_MAX_TOP = MAX_TOP
 GH.nameMenuStats = { opened = 0, fallback = 0, clicks = 0 }
 
@@ -70,7 +70,8 @@ local function HookEntries(gh, kind, name, ctx)
 					if e.items then
 						r[#r + 1] = { kind = "submenu", key = e.key, text = e.text, ok = e.ok ~= false, why = e.why, items = e.items }
 					else
-						r[#r + 1] = { kind = "button", key = e.key, text = e.text, ok = e.ok ~= false, why = e.why, run = e.run }
+						r[#r + 1] = { kind = "button", key = e.key, text = e.text, ok = e.ok ~= false, why = e.why, run = e.run,
+							red = e.red and true or nil }
 					end
 				end
 			end
@@ -92,6 +93,11 @@ function GH:NameMenuEntries(name, ctx)
 	if not mine then
 		local ok, why, s = WhisperState(self, name)
 		e[#e + 1] = Btn("whisper", L.MENU_WHISPER, ok, why, s, function() GH:WhisperMember(name) end)
+		-- 1.0.0-beta.1: "I can help" right after Whisper, only while their status is Need help
+		if self.NeedsHelpStatus and self:NeedsHelpStatus(name) then
+			ok, why, s = self:CanHelpState(name)
+			e[#e + 1] = Btn("canhelp", L.MENU_CANHELP, ok, why, s, function() GH:CanHelp(name) end)
+		end
 		ok, why, s = InviteState(self, name)
 		e[#e + 1] = Btn("invite", L.MENU_INVITE_GROUP, ok, why, s, function()
 			if InviteState(GH, name) then GH:InviteMember(name) end
@@ -166,9 +172,29 @@ local function Grey(elem, why)
 	end
 end
 
+-- 1.0.0-beta.2: a `red` entry (Remove from guild) is drawn red while it can be used; greyed stays grey.
+local RED = "|cffff4040%s|r"
+function GH.MenuText(x)
+	if x.red and x.ok then return RED:format(x.text) end
+	return x.text
+end
+
 local function Fill(root, entries)
 	for _, x in ipairs(entries) do
-		if x.kind == "title" or x.kind == "head" then
+		if x.kind == "radio" then
+			-- 1.0.0-beta.2 quick menu: a ticked choice (checked() read when drawn); one click = one run
+			local run = Click(x.run)
+			local b
+			if root.CreateRadio then
+				b = root:CreateRadio(x.text, function() return x.checked and x.checked() and true or false end, function()
+					run()
+					return MenuResponse and MenuResponse.Close
+				end)
+			else
+				b = root:CreateButton(x.text, run)
+			end
+			if not x.ok then Grey(b, x.why) end
+		elseif x.kind == "title" or x.kind == "head" then
 			if root.CreateTitle then root:CreateTitle(x.text) end
 		elseif x.kind == "divider" then
 			if root.CreateDivider then root:CreateDivider() end
@@ -177,7 +203,7 @@ local function Fill(root, entries)
 			if b and type(x.items) == "table" and b.CreateButton then Fill(b, x.items) end
 			if not x.ok then Grey(b, x.why) end
 		else
-			local b = root:CreateButton(x.text, Click(x.run))
+			local b = root:CreateButton(GH.MenuText(x), Click(x.run))
 			if not x.ok then Grey(b, x.why) end
 		end
 	end
@@ -234,13 +260,16 @@ local function ShowPopup(owner, entries)
 	end
 	for i, x in ipairs(flat) do
 		local b = PopupRow(p, i)
-		b:SetLabel(x.text)
+		local isBtn = x.kind == "button" or x.kind == "radio"
+		local label = GH.MenuText(x)
+		if x.kind == "radio" and x.checked and x.checked() then label = L.QM_TICKED:format(label) end
+		b:SetLabel(label)
 		b.why = x.why
-		local active = x.kind == "button" and x.ok
+		local active = isBtn and x.ok
 		b:SetEnabled(active and true or false)
-		if b.SetGreyed then b:SetGreyed(x.kind == "button" and not x.ok) end
+		if b.SetGreyed then b:SetGreyed(isBtn and not x.ok) end
 		b:SetScript("OnClick", function()
-			if x.kind == "button" and x.ok then
+			if isBtn and x.ok then
 				p:Hide()
 				Click(x.run)()
 			end
@@ -270,14 +299,21 @@ function GH:ShowNameMenu(owner, name, ctx)
 	if InCombat() then return false end -- every feature runs out of combat
 	local entries = self:NameMenuEntries(name, ctx)
 	self.nameMenuStats.opened = self.nameMenuStats.opened + 1
+	local _, fallback = self:ShowEntryMenu(owner, entries)
+	if fallback then self.nameMenuStats.fallback = self.nameMenuStats.fallback + 1 end
+	return true
+end
+
+-- Any entry list (name menu, 1.0.0-beta.2 minimap quick menu): MenuUtil context menu, else the
+-- plain popup. Returns true, usedFallback.
+function GH:ShowEntryMenu(owner, entries)
 	self:HideNameMenu()
 	if MenuUtil and type(MenuUtil.CreateContextMenu) == "function" then
 		local ok, menu = pcall(MenuUtil.CreateContextMenu, owner, function(_, root) Fill(root, entries) end)
-		if ok then self.nameMenuOpen = menu return true end
+		if ok then self.nameMenuOpen = menu return true, false end
 	end
-	self.nameMenuStats.fallback = self.nameMenuStats.fallback + 1
 	ShowPopup(owner, entries)
-	return true
+	return true, true
 end
 
 function GH:HideNameMenu()

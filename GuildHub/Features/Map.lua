@@ -317,9 +317,8 @@ function GH:MapFindMe(sender)
 		local now = GetTime()
 		if pulseAt[sender] and now - pulseAt[sender] < PULSE_GAP then
 			self.findStats.pulseDropped = self.findStats.pulseDropped + 1
-		else
-			pulseAt[sender] = now
-			self:MapPulse(sender)
+		elseif self:MapPulse(sender) then
+			pulseAt[sender] = now -- only a pulse that played counts (a group member's dot doesn't pulse)
 		end
 	end
 	if self.db.profile.mapFindLines == false then return end

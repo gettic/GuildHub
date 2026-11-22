@@ -18,6 +18,7 @@ local FLOOR = { live = 0, normal = 3, bulk = 5 }
 local WHISPER_CAP, WHISPER_REFILL = 10, 3
 local PENDING_TIMEOUT = 60
 local BACKOFF_FIRST, BACKOFF_MAX = 10, 120
+local MARGIN = 0.05 -- tokens kept spare on top of what a message needs (BudgetAllows)
 
 local B = {
 	guild = { tokens = CAP, cap = CAP, refill = 1, t = nil },
@@ -67,7 +68,13 @@ function GH:BudgetAllows(class, pieces, bucket)
 	if bucket == "whisper" then floor = class == "bulk" and 2 or 0 end
 	local b = B[bucket]
 	local need = math.min(pieces, b.cap - floor) -- a message bigger than the room may start when the room is full
-	return self:BudgetFree(bucket) - floor >= need
+	local free = self:BudgetFree(bucket) - floor
+	-- 1.0.0-beta.2: a small safety margin while the bucket is refilling, so a piece never goes out at
+	-- 0.9999 tokens (the game's count and ours add the refill in different steps; the server refused a
+	-- few in a 40-login storm). Only when the count holds refilled time: a full bucket, a burst at one
+	-- moment (no time since the last spent token = whole tokens) and a full room are unchanged.
+	if b.tokens < b.cap and GetTime() > (b.spentAt or -1) then need = math.min(need + MARGIN, b.cap - floor) end
+	return free >= need
 end
 
 -- The message is handed to AceComm: its pieces are waiting.
@@ -89,6 +96,7 @@ function GH:BudgetPieceDone(p, didSend)
 		local b = B[p.bucket]
 		Refill(b, now)
 		b.tokens = math.max(-b.cap, b.tokens - 1)
+		b.spentAt = now -- BudgetAllows: no margin for more pieces at this same moment
 		B.sentLog[#B.sentLog + 1] = { t = now, bucket = p.bucket }
 		B.backoffStep = 0
 	end

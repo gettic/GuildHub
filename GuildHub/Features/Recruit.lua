@@ -897,7 +897,14 @@ function GH:OnGuildJoin(name)
 	if not r then return end
 	self.recentJoins = self.recentJoins or {}
 	self.recentJoins[name] = { t = Now() }
-	if self.db.profile.recruitToasts ~= false and self.ShowJoinToast then self:ShowJoinToast(name) end
+	if self.db.profile.recruitToasts ~= false and self.ShowJoinToast then
+		-- 1.0.0-beta.1: through the one queue (quiet rules, budget, badge on the Recruiting tab)
+		if self.QueueToast then
+			self:QueueToast({ kind = "join", sender = name, tab = "members" })
+		else
+			self:ShowJoinToast(name)
+		end
+	end
 	-- "thanks to": ask the game for its log once (a harmless read), then look for the invite
 	if type(QueryGuildEventLog) == "function" and not InCombatLockdown() then
 		self:On("recruit", "GUILD_EVENT_LOG_UPDATE", function()

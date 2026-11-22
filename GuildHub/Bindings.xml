@@ -1,0 +1,11 @@
+<Bindings>
+	<!-- 1.0.0-beta.2 (Q4): two key bindings, unbound by default (Key Bindings > AddOns > Guild Hub).
+	     They only open / close Guild Hub's own windows; nothing protected or secure.
+	     The game loads this file by itself (no .toc line). Names: Locale.lua BINDING_* -->
+	<Binding name="GUILDHUB_TOGGLE" header="GUILDHUB" category="ADDONS">
+		if GuildHub and GuildHub.ToggleMainFrame then GuildHub:ToggleMainFrame() end
+	</Binding>
+	<Binding name="GUILDHUB_MINI" category="ADDONS">
+		if GuildHub and GuildHub.ToggleMiniWindow then GuildHub:ToggleMiniWindow() end
+	</Binding>
+</Bindings>

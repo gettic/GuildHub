@@ -774,7 +774,7 @@ function GH:ShowMembersTab(page)
 end
 
 -- Tab registry (UI\MainFrame.lua): the Recruiting tab (key "members"), after the Map tab.
-GH:RegisterTab({ key = "members", order = 40, label = "TAB_MEMBERS", sub = "WIN_SUB_MEMBERS", feature = "recruit",
+GH:RegisterTab({ key = "members", order = 40, label = "TAB_MEMBERS", sub = "WIN_SUB_MEMBERS", tip = "TAB_TIP_MEMBERS", feature = "recruit",
 	show = function(gh, page) gh:ShowMembersTab(page) end })
 
 ------------------------------------------------------------------------
@@ -914,6 +914,8 @@ function GH:ShowJoinToast(name)
 			s.left = (s.left or 0) - elapsed
 			if s.left <= 0 then s:Hide() end
 		end)
+		-- 1.0.0-beta.1: drawn by the one queue (UI\Toasts.lua); closing it shows the next note
+		t:SetScript("OnHide", function() if GH.ToastNext then GH:ToastNext() end end)
 		self.joinToast = t
 	end
 	t.name = name

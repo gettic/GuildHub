@@ -16,9 +16,12 @@ local defaults = {
 		window = { point = "CENTER", x = 0, y = 0 },
 		sort = "activity",
 		compact = false,
+		folded = {},          -- 1.0.0-beta.2: Status board groups folded by a header click ([group] = true)
 		showNoAddon = true,
 		minimap = { hide = false, angle = 200 },
 		alerts = { lfg = true, help = true, muted = {} },
+		alertsPauseUntil = 0, -- 1.0.0-beta.1: pop-up notes paused until this server time (UI\Toasts.lua)
+		toastBudget = true,   -- 1.0.0-beta.1: at most 3 pop-up notes per 10 minutes
 		autoActivity = true,
 		inviteFallback = false, -- set for good if the game blocks InviteUnit from the addon
 		-- (beta.2/3 saved `mini` here; it is no longer read and does no harm)
@@ -36,6 +39,7 @@ local defaults = {
 		guideShown = false,  -- the Getting started card showed by itself on this character
 		usedStatus = false,  -- this character has set a status at least once (Getting started tick)
 		guideDeferred = false, -- the guide was skipped after a map "Not now" (tos C2): it shows next login
+		-- 1.0.0-beta.1 lastLfg = { d, t, at }: the LFG you cleared, for "LFG again" (2 h, never sent; Status.lua)
 	},
 }
 
@@ -115,6 +119,15 @@ function GH:RepairSaved()
 			end
 		end
 		if badMuted then fixed[#fixed + 1] = "alerts.muted" end
+		-- 1.0.0-beta.2 folded groups: only a known group key with `true` is kept
+		local badFold = false
+		for k, v in pairs(p.folded) do
+			if type(k) ~= "string" or v ~= true or (self.GROUP_COLOR and not self.GROUP_COLOR[k]) then
+				p.folded[k] = nil
+				badFold = true
+			end
+		end
+		if badFold then fixed[#fixed + 1] = "folded" end
 		if p.shareGroup ~= nil and type(p.shareGroup) ~= "boolean" then
 			p.shareGroup = nil
 			fixed[#fixed + 1] = "shareGroup"

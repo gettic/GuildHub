@@ -27,7 +27,8 @@ GH.features = {}      -- [key] = feature table
 GH.featureOrder = {}  -- keys in registration order
 GH.msgTypes = {}      -- [TYPE] = { owner = key, class, min, keep, latest }
 
-GH.HOOK_KEYS = { "nameMenu", "hoverLines", "rowBadges", "minimapMenu", "welcome", "slash", "search", "toasts", "shares" }
+GH.HOOK_KEYS = { "nameMenu", "hoverLines", "rowBadges", "minimapMenu", "welcome", "slash", "search", "toasts", "shares",
+	"myStatus", "news" } -- 1.0.0-beta.1: My status ticks {key, text, get, set, why}; news lines {order, fn(GH) -> text, onClick}
 
 local CLASSES = { live = true, normal = true, bulk = true }
 

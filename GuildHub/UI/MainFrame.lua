@@ -10,7 +10,8 @@ local PAGE_TOP = -56 -- the pages (and their insets) start here
 ------------------------------------------------------------------------
 -- Tab registry (0.6.0-beta.3). Each page registers itself (its own file):
 --   GH:RegisterTab{ key, order, label = Locale key, sub = Locale key (subtitle), feature = key (the
---     tab shows only while that feature is on), build = fn(GH, page) (once, on first show),
+--     tab shows only while that feature is on), tip = Locale key (1.0.0-beta.2: the tab's one-line
+--     tooltip), build = fn(GH, page) (once, on first show),
 --     show = fn(GH, page) (every show), eager = true (built with the window), noTab = true (a page
 --     without a tab: Settings, opened by the gear) }
 -- At most 6 tabs (plan sec. 1); the right end of the tab row stays free (>= 200 px) for the later
@@ -51,7 +52,7 @@ function GH:TabList()
 	return r
 end
 
-GH:RegisterTab({ key = "status", order = 10, label = "TAB_STATUS", sub = "WIN_SUB", eager = true,
+GH:RegisterTab({ key = "status", order = 10, label = "TAB_STATUS", sub = "WIN_SUB", tip = "TAB_TIP_STATUS", eager = true,
 	build = function(gh, page) gh:BuildStatusTab(page) end, -- UI\StatusTab.lua (its OnUpdate stops while hidden)
 	show = function(gh) if gh.mainFrame and gh.mainFrame:IsShown() then gh:RefreshBoard(true) end end })
 GH:RegisterTab({ key = "settings", order = 99, sub = "WIN_SUB_SETTINGS", noTab = true,
@@ -128,6 +129,18 @@ local function MakeTabs(f)
 			b = W.PlainButton(f, L[t.label], 90, 24, "GameFontNormal")
 		end
 		b:SetScript("OnClick", function() GH:ShowTab(t.key) end)
+		-- 1.0.0-beta.2 (Q6): one-line tooltip per tab (HookScript: the template keeps its own scripts)
+		local tip = t.tip and L[t.tip]
+		if tip then
+			b.ghTip = tip
+			b:HookScript("OnEnter", function(s)
+				GameTooltip:SetOwner(s, "ANCHOR_BOTTOM")
+				GameTooltip:AddLine(L[t.label] or "")
+				GameTooltip:AddLine(tip, 1, 0.82, 0, true)
+				GameTooltip:Show()
+			end)
+			b:HookScript("OnLeave", function() GameTooltip:Hide() end)
+		end
 		f.tabs[t.key] = b
 		f.Tabs[i] = b
 	end
@@ -253,8 +266,13 @@ function GH:CreateMainFrame()
 		FitToScreen(s)
 		GH:RequestRoster()
 		GH:RefreshBoard(true)
+		if GH.DrawBadges then GH:DrawBadges() end -- the minimap badge only shows while the window is closed
 	end)
-	f:SetScript("OnHide", function() GH:HideDungeonPicker() end)
+	f:SetScript("OnHide", function()
+		GH:HideDungeonPicker()
+		if GH.lfgMatch then GH.lfgMatch:Hide() end
+		if GH.DrawBadges then GH:DrawBadges() end
+	end)
 	-- screen size / UI scale changes and a fit that waited for combat to end (Events.lua dispatcher)
 	local function OnFitEvent(ev)
 		if ev == "PLAYER_REGEN_ENABLED" and not GH.fitAfterCombat then return end
@@ -329,6 +347,7 @@ function GH:ShowTab(key)
 	local f = self:CreateMainFrame()
 	if not f.pages[key] or not self:TabAllowed(key) then key = "status" end
 	f.currentTab = key
+	if self.ClearBadge then self:ClearBadge(key) end -- 1.0.0-beta.1: opening a tab clears its badge
 	self:HideDungeonPicker()
 	if self.HideNameMenu then self:HideNameMenu() end
 	for i, t in ipairs(f.tabList) do
@@ -345,14 +364,41 @@ function GH:ShowTab(key)
 	for _, k in ipairs(self.tabOrder) do
 		local pg = f.pages[k] -- a page registered after the window was made has no frame (never shown)
 		if pg then pg:SetShown(k == key) end
-		if k == key then f.sub:SetText(L[self.tabDefs[k].sub] or "") end
 	end
+	self:UpdateSubtitle()
 	local gear = f.gearButton
 	if gear and gear.LockHighlight then
 		if key == "settings" then gear:LockHighlight() else gear:UnlockHighlight() end
 	end
 	local d = self.tabDefs[key]
 	if d.show then d.show(self, f.pages[key]) end
+end
+
+-- 1.0.0-beta.2 (Q7): "N online · N with Guild Hub" from our copy of the guild list (no extra
+-- GuildRoster request: it follows RebuildRoster / RefreshBoard). Settings keeps its own subtitle.
+function GH:GuildCounts()
+	-- online count kept by RebuildRoster (the only place self.roster changes): no recount per board draw
+	local online = self.rosterOnline or 0
+	local withAddon = 0
+	local me = self:MyName()
+	if self.roster and self.roster[me] and self.roster[me].online then withAddon = 1 end
+	for name in pairs(self.addonUsers or {}) do
+		if name ~= me and self:IsAddonUserOnline(name) then withAddon = withAddon + 1 end
+	end
+	return online, withAddon
+end
+
+function GH:SubtitleText(key)
+	local d = key and self.tabDefs[key]
+	if key == "settings" or not self.rosterReady then return d and L[d.sub] or L.WIN_SUB end
+	local online, withAddon = self:GuildCounts()
+	return L.WIN_SUB_COUNTS:format(online, withAddon)
+end
+
+function GH:UpdateSubtitle()
+	local f = self.mainFrame
+	if not (f and f.sub) then return end
+	f.sub:SetText(self:SubtitleText(f.currentTab or "status"))
 end
 
 -- /ghub test ui: which art this client gave the window (for bug reports).
@@ -375,6 +421,9 @@ function GH:TestUI()
 		yes(W.HasTemplate("WowStyle1FilterDropdownTemplate")), atlas("Dungeon"), atlas("Raid"), atlas("common-icon-checkmark"),
 		file("Interface\\Minimap\\PartyRaidBlips"), file("Interface\\Common\\ReputationStar"),
 		file("Interface\\FriendsFrame\\InformationIcon"))
+	-- 1.0.0-beta.2: the art parts 1.0.x needs (atlas / file / plain)
+	local bar, tick, cls, star = W.ArtReport()
+	self:Msg(L.TEST_UI3, bar, tick, cls, star, W.FoldArt(true) and "file" or "plain")
 end
 
 -- /ghub, minimap left-click: always the full window (open/close). If the mini window is showing,
@@ -402,6 +451,56 @@ function GH:SetMiniMode(on)
 		local f = self:CreateMainFrame()
 		self:ShowTab("status")
 		f:Show()
+	end
+end
+
+------------------------------------------------------------------------
+-- 1.0.0-beta.2 (Q1): the minimap button's right-click quick menu. Only your own things: your status
+-- (one click = at most one STATUS, as in My status), Clear all (your own status only), the local
+-- alert pause, the mini window and Settings (last). No name actions. Drawn by GH:ShowEntryMenu
+-- (NameMenu.lua: MenuUtil, else the plain popup).
+------------------------------------------------------------------------
+GH.quickMenuStats = { opened = 0, fallback = 0 }
+
+function GH:QuickMenuEntries()
+	local e = {}
+	local function cur()
+		local own = self:GetOwnStatus() or {}
+		return self:IsStatusFresh(own) and own.p or nil
+	end
+	e[#e + 1] = { kind = "title", text = L.WIN_TITLE }
+	e[#e + 1] = { kind = "head", text = L.QM_STATUS }
+	e[#e + 1] = { kind = "radio", key = "p:none", text = L.QM_NONE, ok = true,
+		checked = function() return cur() == nil end, run = function() GH:PickPreset(nil) end }
+	for _, p in ipairs(self.PRESETS) do
+		e[#e + 1] = { kind = "radio", key = "p:" .. p, text = L.PRESET[p], ok = true,
+			checked = function() return cur() == p end, run = function() GH:PickPreset(p) end }
+	end
+	e[#e + 1] = { kind = "button", key = "clear", text = L.BTN_CLEAR_ALL, ok = true, run = function() GH:ClearAllOwn() end }
+	e[#e + 1] = { kind = "divider" }
+	local left = self.AlertsPausedLeft and self:AlertsPausedLeft() or 0
+	e[#e + 1] = { kind = "button", key = "pause", ok = true,
+		text = left > 0 and L.QM_RESUME:format(U.Duration(left)) or L.QM_PAUSE,
+		run = function() GH:TogglePauseAlerts() end }
+	e[#e + 1] = { kind = "button", key = "mini", text = L.QM_MINI, ok = true, run = function() GH:ToggleMiniWindow() end }
+	e[#e + 1] = { kind = "divider" }
+	e[#e + 1] = { kind = "button", key = "settings", text = L.QM_SETTINGS, ok = true, run = function() GH:OpenOptions() end }
+	return e
+end
+
+function GH:ShowQuickMenu(owner)
+	self.quickMenuStats.opened = self.quickMenuStats.opened + 1
+	local _, fallback = self:ShowEntryMenu(owner or self.minimapButton, self:QuickMenuEntries())
+	if fallback then self.quickMenuStats.fallback = self.quickMenuStats.fallback + 1 end
+	return true
+end
+
+-- Quick menu / key binding: the mini window open or closed (only our own frames).
+function GH:ToggleMiniWindow()
+	if self.miniFrame and self.miniFrame:IsShown() then
+		self.miniFrame:Hide()
+	else
+		self:SetMiniMode(true)
 	end
 end
 
@@ -444,8 +543,8 @@ function GH:InitMinimapButton()
 	border:SetSize(53, 53)
 	border:SetPoint("TOPLEFT")
 
-	b:SetScript("OnClick", function(_, button)
-		if button == "RightButton" then GH:OpenOptions() else GH:ToggleMainFrame() end
+	b:SetScript("OnClick", function(s, button)
+		if button == "RightButton" then GH:ShowQuickMenu(s) else GH:ToggleMainFrame() end
 	end)
 	b:SetScript("OnDragStart", function(self)
 		self:SetScript("OnUpdate", function(s)
@@ -472,6 +571,18 @@ function GH:InitMinimapButton()
 		if lfg + help > 0 then
 			GameTooltip:AddLine(L.MM_TIP_LFG:format(lfg) .. " · " .. (help == 1 and L.MM_TIP_HELP1 or L.MM_TIP_HELPN):format(help), 1, 0.85, 0.5)
 		end
+		-- 1.0.0-beta.1: the LFG match, held notes and the pause
+		local match, d = GH:LfgMatches()
+		if d and #match > 0 then
+			local dn = GH:DungeonName(d)
+			GameTooltip:AddLine(#match == 1 and L.NEWS_MATCH1:format(dn) or L.NEWS_MATCHN:format(#match, dn), 0.45, 0.85, 0.45)
+		end
+		local held = GH.BadgeCount and GH:BadgeCount() or 0
+		if held > 0 then
+			GameTooltip:AddLine(held == 1 and L.MM_TIP_HELD1 or L.MM_TIP_HELDN:format(held), 1, 0.82, 0)
+		end
+		local paused = GH.AlertsPausedLeft and GH:AlertsPausedLeft() or 0
+		if paused > 0 then GameTooltip:AddLine(L.MM_TIP_PAUSED:format(U.Duration(paused)), 0.7, 0.7, 0.7) end
 		GameTooltip:AddLine(L.MM_TIP_CLICK, 0.7, 0.7, 0.7)
 		GameTooltip:Show()
 	end)

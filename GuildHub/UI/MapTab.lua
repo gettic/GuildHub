@@ -73,7 +73,7 @@ function GH:BuildMapRows(opts)
 	for _, z in ipairs(order) do
 		local inst = self.INSTANCE_BY_NAME[z]
 		local short = inst and inst.short
-		local raid = short and self.ENTRANCE_BY_SHORT and self.ENTRANCE_BY_SHORT[short] and self.ENTRANCE_BY_SHORT[short].raid
+		local raid = short and self.ENTRANCE_BY_SHORT and self.ENTRANCE_BY_SHORT[short] and self.ENTRANCE_BY_SHORT[short].raid or (inst and inst.raid) -- 1.0.0-beta.1: new raids have no entrance spot yet
 		rows[#rows + 1] = { header = z, count = #zones[z], mine = z == myZone, inst = inst and (raid and "raid" or "dungeon") or nil }
 		for _, d in ipairs(zones[z]) do rows[#rows + 1] = d end
 	end
@@ -445,5 +445,5 @@ function GH:RefreshMapTab()
 end
 
 -- Tab registry (UI\MainFrame.lua): the third tab, only while the map feature is on.
-GH:RegisterTab({ key = "map", order = 30, label = "TAB_MAP", sub = "WIN_SUB_MAP", feature = "map",
+GH:RegisterTab({ key = "map", order = 30, label = "TAB_MAP", sub = "WIN_SUB_MAP", tip = "TAB_TIP_MAP", feature = "map",
 	show = function(gh, page) gh:ShowMapTab(page) end })

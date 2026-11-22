@@ -252,14 +252,20 @@ local function Pulse(dot, r, g, b)
 	ring:Show()
 end
 
--- The sender's dots pulse (world map + minimap). Not in combat (Map.lua checks), only a dot we show.
+-- The sender's dots pulse (world map + minimap). Not in combat (Map.lua checks), only a dot we show:
+-- none for a group member (their dot is hidden, Blizzard shows them). true = a pulse played.
 function GH:MapPulse(name)
 	local ic = self.mapIcons[name]
-	if not ic or not (self.positions[name] or self.testPositions[name]) then return end
+	if not ic or not (self.positions[name] or self.testPositions[name]) then return false end
+	if not self.testPositions[name] and self:MapInMyGroup(name) then
+		self.groupPulseSkipped = (self.groupPulseSkipped or 0) + 1
+		return false
+	end
 	local r, g, b = ClassColor(ClassOf(name, self.positions[name] or self.testPositions[name]))
 	Pulse(ic.world, r, g, b)
 	if self.db.profile.mapMinimap then Pulse(ic.mini, r, g, b) end
 	self.pulseCount = self.pulseCount + 1
+	return true
 end
 
 ------------------------------------------------------------------------
@@ -280,6 +286,40 @@ function GH:MapAfkRefresh()
 end
 
 ------------------------------------------------------------------------
+-- Group members (0.6.0, the user's wish): Blizzard already shows party and raid members on the world
+-- map and the minimap, so their Guild Hub dot is hidden while they are in our group (their position is
+-- kept, the dot comes back when they leave). Names from GH:ScanMyGroup (Status.lua: full names, a
+-- secret name is skipped = not a group member = the dot shows as before).
+------------------------------------------------------------------------
+function GH:MapInMyGroup(name)
+	local g = self.myGroup
+	return type(g) == "table" and name ~= nil and g[name] == true
+end
+
+local lastGroup = {}
+-- How many guildmates' dots are hidden now because they are in our group (self-test).
+function GH:MapGroupHiddenCount()
+	local n = 0
+	for name in pairs(self.positions) do if self:MapInMyGroup(name) then n = n + 1 end end
+	return n
+end
+-- Called by GH:OnGroupChanged (Status.lua) right after its ScanMyGroup, so the group is scanned once
+-- per GROUP_ROSTER_UPDATE. ScanMyGroup always puts a NEW set in GH.myGroup (never edits the old one),
+-- so keeping a reference is enough. While the map is off only the set is remembered (no dot work).
+local function OnGroupChanged()
+	local now = GH.myGroup or {}
+	if not GH:FeatureOn("map") then lastGroup = now; return end
+	for name in pairs(now) do
+		if not lastGroup[name] and GH.positions[name] and GH.MapDotChanged then GH:MapDotChanged(name) end
+	end
+	for name in pairs(lastGroup) do
+		if not now[name] and GH.positions[name] and GH.MapDotChanged then GH:MapDotChanged(name) end
+	end
+	lastGroup = now
+end
+GH.MapGroupChanged = OnGroupChanged -- Status.lua GH:OnGroupChanged + tests
+
+------------------------------------------------------------------------
 -- Drawing the dots
 ------------------------------------------------------------------------
 local function RemoveIcons(P, ic)
@@ -298,6 +338,7 @@ function GH:MapDotChanged(name)
 	if not p then
 		p = self.positions[name]
 		if p and (not GH.MapSeesDots(self) or self:IsIgnored(name)) then p = nil end
+		if p and self:MapInMyGroup(name) then p = nil end -- Blizzard shows group members
 	end
 	local ic = self.mapIcons[name]
 	if not p then
@@ -309,6 +350,9 @@ function GH:MapDotChanged(name)
 	ic.world.tex:SetVertexColor(r, g, b)
 	ic.mini.tex:SetVertexColor(r, g, b)
 	DimAfk(name, ic)
+	-- 1.0.0-beta.2 (RC soak bug 1): drop the old world-map pin first; HBD makes a new pin for every
+	-- add of a moving dot while the map is shut, and those pins piled up (thousands per hour)
+	pcall(P.RemoveWorldMapIcon, P, REF, ic.world)
 	pcall(P.AddWorldMapIconMap, P, REF, ic.world, p.m, p.x, p.y, HBD_PINS_WORLDMAP_SHOW_PARENT or 1)
 	if self.db.profile.mapMinimap then
 		pcall(P.AddMinimapIconMap, P, REF, ic.mini, p.m, p.x, p.y, true, false)
@@ -659,9 +703,16 @@ function GH:MapSelfTest(api)
 		end)
 		if not okR or not (ring and ring.tex) then api.Problem("MAP", "pulse", "the Find me ring failed") end
 		local fs, st = self.findStats, self.posStats
-		api.Info(("map extras: entrances %d/%d, afk-hide %s (sent while afk %d, afk unknown %d), find sent %d got %d lines %d, pulses %d dropped %d, ping art %s, dlabels %d, dungeon art %s"):format(
+		api.Info(("map extras: entrances %d/%d, afk-hide %s (sent while afk %d, afk unknown %d), find sent %d got %d lines %d, pulses %d dropped %d, ping art %s, dlabels %d, dungeon art %s, group-hidden %d (pulses skipped %d)"):format(
 			good, total, self.db.profile.mapHideAfk ~= false and "y" or "n", st.inAfk, self.afkUnknown or 0, fs.sent, fs.got, fs.lines,
 			self.pulseCount, fs.pulseDropped or 0, okR and ring and ring.art or "-", self:MapDungeonLabelCount(),
-			W.DungeonIconArt("dungeon") and "y" or "n"))
+			W.DungeonIconArt("dungeon") and "y" or "n", self:MapGroupHiddenCount(), self.groupPulseSkipped or 0))
+		-- a guildmate in our group must never have a shown Guild Hub dot (Blizzard shows them)
+		api.Count()
+		local twice = 0
+		for name, ic in pairs(self.mapIcons) do
+			if not self.testPositions[name] and self:MapInMyGroup(name) and ic.world:IsShown() then twice = twice + 1 end
+		end
+		if twice > 0 then api.Problem("MAP", "group", twice .. " group member(s) with a Guild Hub dot as well") end
 	end
 end

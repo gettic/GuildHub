@@ -30,15 +30,14 @@ local ENTRANCES = {
 	{ key = "ZF",     m = 1446, x = 0.390, y = 0.205, list = { "ZF" } },                  -- Tanaris
 	{ key = "Mara",   m = 1443, x = 0.290, y = 0.625, list = { "Mara" } },                -- Desolace
 	{ key = "ST",     m = 1435, x = 0.698, y = 0.536, list = { "ST" } },                  -- Swamp of Sorrows
-	{ key = "BRM",    m = 1428, x = 0.293, y = 0.383, list = { "BRD", "LBRS", "UBRS", "BRS", "MC", "BWL" },
+	{ key = "BRM",    m = 1428, x = 0.293, y = 0.383, list = { "BRD", "LBRS", "UBRS", "BRS" },
 		name = "BRM", also = { m = 1427, x = 0.348, y = 0.845 } },                        -- Burning Steppes / Searing Gorge
 	{ key = "DireM",  m = 1444, x = 0.590, y = 0.449, list = { "Dire Maul" } },           -- Feralas
 	{ key = "Scholo", m = 1422, x = 0.697, y = 0.732, list = { "Scholo" } },              -- Western Plaguelands, Caer Darrow
 	{ key = "Strat",  m = 1423, x = 0.310, y = 0.155, list = { "Strat" } },               -- Eastern Plaguelands
 	{ key = "Ony",    m = 1445, x = 0.526, y = 0.768, list = { "Ony" }, raid = true },                 -- Dustwallow Marsh
-	{ key = "ZG",     m = 1434, x = 0.539, y = 0.176, list = { "ZG" }, raid = true },                  -- Stranglethorn Vale
-	{ key = "AQ",     m = 1451, x = 0.286, y = 0.924, list = { "AQ20", "AQ40" }, name = "AQ", raid = true }, -- Silithus
-	{ key = "Naxx",   m = 1423, x = 0.399, y = 0.259, list = { "Naxx" }, raid = true },                -- Eastern Plaguelands
+	-- 1.0.0-beta.1: WoW Forever has no MC, BWL, ZG, AQ or Naxx (warcraft.wiki.gg/wiki/WoW_Forever). The new
+	-- dungeons and raids get their doors here once the `newdng` probe reports where they are.
 }
 GH.ENTRANCES = ENTRANCES
 
@@ -130,7 +129,7 @@ local function FullName(gh, short)
 	return fullNames[short] or short
 end
 
--- Label text: "Wailing Caverns 3" for one dungeon, "Blackrock Mountain: BRD 2 · MC 5" for a shared door.
+-- Label text: "Wailing Caverns 3" for one dungeon, "Blackrock Mountain: BRD 2 · LBRS 5" for a shared door.
 function GH:DungeonLabelText(e, c)
 	local L = ns.L
 	if #e.list == 1 then

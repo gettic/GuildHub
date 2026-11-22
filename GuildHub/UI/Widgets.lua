@@ -42,6 +42,10 @@ W.ART = {
 	ping = { file = "Interface\\minimap\\UI-Minimap-Ping-Expand" },
 	-- 0.6.0 dungeon labels: Blizzard's dungeon / raid map icons; fallback = text only
 	dungeonIcon = { dungeon = "Dungeon", raid = "Raid" },
+	-- 1.0.0-beta.1 badges (held notes): Blizzard's notification dot, by name; fallback = a white square
+	-- masked round, tinted red (tos-check item 4)
+	badge = { atlas = "communities-icon-notification", file = "Interface\\Buttons\\WHITE8X8",
+		mask = "Interface\\CharacterFrame\\TempPortraitAlphaMask" },
 }
 
 -- Blizzard's font colours (read from the game when there, else the same values).
@@ -391,6 +395,119 @@ function W.IconPath(name)
 	return W.ART.iconPath .. "INV_Misc_QuestionMark"
 end
 
+------------------------------------------------------------------------
+-- 1.0.0-beta.2 (W): art parts for 1.0.x (goals, bingo, raid roster, guild firsts). Nothing uses
+-- them yet; /ghub test ui reports which kind each one got in this client (atlas / file / plain).
+-- Each: a Blizzard atlas by name when the game has it, else a game file, else a plain drawing.
+------------------------------------------------------------------------
+W.ART.progress = { atlas = "UI-Frame-Bar-Fill-Green", file = "Interface\\TargetingFrame\\UI-StatusBar",
+	color = { 0.15, 0.7, 0.2 }, bg = { 0, 0, 0, 0.6 } }
+W.ART.tick = { atlas = "common-icon-checkmark", file = "Interface\\RaidFrame\\ReadyCheck-Ready", text = "+" }
+W.ART.star = { atlas = "PetJournal-FavoritesIcon", file = "Interface\\Common\\ReputationStar",
+	coords = { 0, 0.5, 0, 0.5 }, text = "*" }
+-- folded / open group header on the Status board (Q5)
+W.ART.fold = { [true] = "Interface\\Buttons\\UI-PlusButton-Up", [false] = "Interface\\Buttons\\UI-MinusButton-Up" }
+
+-- Which art a part gets: "atlas", name / "file", path / "plain".
+function W.PartArt(key)
+	local a = W.ART[key]
+	if type(a) ~= "table" then return "plain" end
+	if a.atlas and W.HasAtlas(a.atlas) then return "atlas", a.atlas end
+	if a.file and HasFile(a.file) then return "file", a.file end
+	return "plain"
+end
+
+-- The +/- file for a group header, or nil (then the header shows "+ " / "- " in its text).
+function W.FoldArt(folded)
+	local f = W.ART.fold[folded and true or false]
+	if f and HasFile(f) then return f end
+	return nil
+end
+
+-- A progress bar (StatusBar): atlas fill, else the game's bar file tinted green, else a flat colour.
+-- bar:SetProgress(value, max, text). Returns the bar; bar.kind = the art used.
+function W.ProgressBar(parent, w, h)
+	local a = W.ART.progress
+	local bar = CreateFrame("StatusBar", nil, parent)
+	bar:SetSize(w or 200, h or 14)
+	bar:SetMinMaxValues(0, 1)
+	bar:SetValue(0)
+	local kind, art = W.PartArt("progress")
+	if kind == "atlas" and bar.SetStatusBarTexture then
+		local ok = pcall(bar.SetStatusBarTexture, bar, art)
+		if not ok then kind = "plain" end
+	elseif kind == "file" then
+		bar:SetStatusBarTexture(art)
+		bar:SetStatusBarColor(a.color[1], a.color[2], a.color[3])
+	end
+	if kind == "plain" then
+		bar:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
+		bar:SetStatusBarColor(a.color[1], a.color[2], a.color[3])
+	end
+	bar.kind = kind
+	bar.bg = bar:CreateTexture(nil, "BACKGROUND")
+	bar.bg:SetAllPoints()
+	bar.bg:SetColorTexture(a.bg[1], a.bg[2], a.bg[3], a.bg[4])
+	bar.text = W.Text(bar, "GameFontHighlightSmall")
+	bar.text:SetPoint("CENTER")
+	function bar:SetProgress(value, max, text)
+		max = (type(max) == "number" and max > 0) and max or 1
+		value = type(value) == "number" and math.max(0, math.min(value, max)) or 0
+		self:SetMinMaxValues(0, max)
+		self:SetValue(value)
+		self.text:SetText(text or "")
+	end
+	return bar
+end
+
+-- An icon texture of a part ("tick" / "star") + its text fallback. on = false greys it (star "off").
+-- Returns the kind used.
+function W.SetPartIcon(tex, mark, key, on)
+	local a = W.ART[key] or {}
+	local kind, art = W.PartArt(key)
+	if kind == "atlas" then tex:SetAtlas(art); tex:SetTexCoord(0, 1, 0, 1)
+	elseif kind == "file" then
+		tex:SetTexture(art)
+		local c = a.coords
+		if c then tex:SetTexCoord(c[1], c[2], c[3], c[4]) else tex:SetTexCoord(0, 1, 0, 1) end
+	end
+	tex:SetShown(kind ~= "plain")
+	if tex.SetDesaturated then tex:SetDesaturated(on == false) end
+	if mark then
+		mark:SetShown(kind == "plain")
+		mark:SetText(a.text or "?")
+		local c = on == false and W.COLOR.gray or (key == "tick" and W.COLOR.green or W.COLOR.normal)
+		mark:SetTextColor(c[1], c[2], c[3])
+	end
+	return kind
+end
+
+-- A class icon with the plain fallback of the preview: class-colour square + short class name.
+-- Returns the kind: "atlas" / "file" / "plain".
+function W.SetClassPart(tex, mark, class)
+	local kind = W.SetClassIcon(tex, class)
+	if kind == "color" then
+		local c = type(RAID_CLASS_COLORS) == "table" and RAID_CLASS_COLORS[class]
+		if c then tex:SetColorTexture(c.r, c.g, c.b, 1) end
+		kind = "plain"
+	end
+	if mark then
+		mark:SetShown(kind == "plain")
+		local s = tostring(class or "?")
+		mark:SetText(s:sub(1, 1) .. s:sub(2, 2):lower())
+		mark:SetTextColor(0, 0, 0)
+	end
+	return kind
+end
+
+-- /ghub test ui: "bar=atlas tick=atlas class=file star=plain" (class: the warrior icon).
+function W.ArtReport()
+	local cls = "plain"
+	if W.HasAtlas(W.ART.classes.atlasPrefix .. "warrior") then cls = "atlas"
+	elseif type(CLASS_ICON_TCOORDS) == "table" and CLASS_ICON_TCOORDS.WARRIOR and HasFile(W.ART.classes.file) then cls = "file" end
+	return (W.PartArt("progress")), (W.PartArt("tick")), cls, (W.PartArt("star"))
+end
+
 -- The side list of a tab (Members: Recruiting; more pages come later). items = { { key, label } }.
 -- Returns the inset; inset.buttons[key]; inset:Select(key) lights one.
 function W.SideList(parent, items, onPick)
@@ -628,11 +745,39 @@ function W.HeaderLine(r, header)
 end
 
 ------------------------------------------------------------------------
+-- 1.0.0-beta.1 badge: a 14 px circle with a count; never changes the size of what it sits on.
+------------------------------------------------------------------------
+function W.Badge(parent)
+	local b = CreateFrame("Frame", nil, parent)
+	b:SetSize(14, 14)
+	local tex = b:CreateTexture(nil, "OVERLAY")
+	tex:SetAllPoints()
+	local art = W.ART.badge
+	if W.HasAtlas(art.atlas) then
+		tex:SetAtlas(art.atlas)
+		b.art = "atlas"
+	else
+		tex:SetTexture(art.file)
+		tex:SetVertexColor(0.85, 0.1, 0.1)
+		if tex.SetMask then pcall(tex.SetMask, tex, art.mask) end
+		b.art = "file"
+	end
+	b.tex = tex
+	local fs = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	fs:SetPoint("CENTER", 0, 0)
+	b.text = fs
+	function b:SetCount(n) self.text:SetText(n > 9 and "9+" or tostring(n)) end
+	b:Hide()
+	return b
+end
+
+------------------------------------------------------------------------
 -- The alert note: small, top of the screen, 10 seconds, no sound, never takes the keyboard.
+-- 1.0.0-beta.1: drawn by the queue (UI\Toasts.lua); when it closes the queue shows the next one.
 ------------------------------------------------------------------------
 local TOAST_SECONDS = 10
 
-function GH:ShowToast(sender, text)
+function GH:ShowToast(sender, text, e)
 	local t = self.toast
 	if not t then
 		t = W.Popup("GuildHubToast", UIParent, 0.94)
@@ -649,6 +794,15 @@ function GH:ShowToast(sender, text)
 		t.text = W.Text(t, "GameFontHighlight")
 		t.text:SetPoint("TOPLEFT", 10, -28)
 		t.text:SetPoint("RIGHT", -10, 0)
+		-- 1.0.0-beta.1 "I can help" on a Need-help note (fills a whisper; Features\Actions.lua)
+		t.canHelp = W.Button(t, L.BTN_CANHELP, 84, 22)
+		t.canHelp:SetPoint("BOTTOMLEFT", 10, 8)
+		if t.canHelp.SetMotionScriptsWhileDisabled then t.canHelp:SetMotionScriptsWhileDisabled(true) end
+		t.canHelp:SetScript("OnClick", function()
+			if GH.CanHelp and GH:CanHelp(t.sender) then t:Hide() end
+		end)
+		t.canHelp:SetScript("OnEnter", function(b) if GH.CanHelpTooltip then GH:CanHelpTooltip(b, t.sender) end end)
+		t.canHelp:SetScript("OnLeave", function() GameTooltip:Hide() end)
 		t.whisper = W.Button(t, L.BTN_WHISPER, 76, 22)
 		t.whisper:SetPoint("BOTTOMLEFT", 10, 8)
 		t.whisper:SetScript("OnClick", function()
@@ -672,10 +826,24 @@ function GH:ShowToast(sender, text)
 			self.left = (self.left or 0) - elapsed
 			if self.left <= 0 then self:Hide() end
 		end)
+		t:SetScript("OnHide", function() if GH.ToastNext then GH:ToastNext() end end)
 		self.toast = t
 	end
 	t.sender = sender
+	t.kind = e and e.kind
 	t.text:SetText(text) -- already cleaned (no colour, link or texture codes)
+	local person = sender ~= nil and t.kind ~= "test"
+	local help = person and t.kind == "help"
+	t.canHelp:SetShown(help)
+	if help then
+		local ok = GH.CanHelpState and GH:CanHelpState(sender)
+		t.canHelp:SetEnabled(ok and true or false)
+		t.canHelp:SetGreyed(not ok)
+	end
+	t.whisper:ClearAllPoints()
+	if help then t.whisper:SetPoint("LEFT", t.canHelp, "RIGHT", 6, 0) else t.whisper:SetPoint("BOTTOMLEFT", 10, 8) end
+	t.whisper:SetShown(person)
+	t.mute:SetShown(person)
 	t.left = TOAST_SECONDS
 	t:Show()
 end

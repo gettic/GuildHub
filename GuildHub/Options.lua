@@ -209,6 +209,19 @@ BuildOptionsBase = function()
 				get = function() return GH.db.profile.alerts.help end,
 				set = function(_, v) GH.db.profile.alerts.help = v end,
 			},
+			-- 1.0.0-beta.1 calm alerts (UI\Toasts.lua)
+			toastBudget = {
+				type = "toggle", order = 15.1, width = "full",
+				name = L.OPT_TOAST_BUDGET, desc = L.OPT_TOAST_BUDGET_DESC,
+				get = function() return GH.db.profile.toastBudget ~= false end,
+				set = function(_, v) GH.db.profile.toastBudget = v and true or false end,
+			},
+			pauseAlerts = {
+				type = "execute", order = 15.2,
+				name = function() return GH:AlertsPausedLeft() > 0 and L.OPT_RESUME or L.OPT_PAUSE end,
+				desc = L.OPT_PAUSE_DESC,
+				func = function() GH:TogglePauseAlerts() end,
+			},
 			muted = {
 				type = "multiselect", order = 16, width = "full",
 				name = L.OPT_MUTED, desc = L.OPT_MUTED_DESC,

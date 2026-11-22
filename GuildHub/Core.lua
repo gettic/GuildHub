@@ -52,6 +52,7 @@ function GH:OnInitialize()
 end
 
 function GH:OnEnable()
+	self.loginAt = GetTime() -- 1.0.0-beta.1: no pop-up notes in the first minute (UI\Toasts.lua)
 	self:InitComm()       -- Comm.lua
 	self:InitRoster()     -- Roster.lua
 	-- events go through the one dispatcher (Events.lua)
@@ -139,6 +140,7 @@ end
 ------------------------------------------------------------------------
 function GH:OnSlash(input)
 	local cmd, rest = (input or ""):lower():match("^%s*(%S*)%s*(.-)%s*$")
+	local rawRest = (input or ""):match("^%s*%S*%s*(.-)%s*$") or "" -- 1.0.0-beta.2: case kept (notes, search)
 	if cmd == "" then
 		self:ToggleMainFrame()
 	elseif cmd == "status" then
@@ -160,6 +162,10 @@ function GH:OnSlash(input)
 		self:TestApi() -- ApiTest.lua
 	elseif cmd == "test" and rest == "map" then
 		self:TestMap() -- UI\MapPins.lua
+	elseif cmd == "pause" then
+		self:TogglePauseAlerts() -- UI\Toasts.lua (1.0.0-beta.1)
+	elseif cmd == "test" and rest == "toast" then
+		self:TestToasts() -- UI\Toasts.lua: 5 local notes through the queue
 	elseif cmd == "findme" then
 		self:FindMe() -- Features\Map.lua (click only: a typed command or a macro the player presses)
 	elseif cmd == "map" then
@@ -168,6 +174,21 @@ function GH:OnSlash(input)
 		local f = self:CreateMainFrame()
 		self:ShowTab("map")
 		f:Show()
+	-- 1.0.0-beta.2 (Q2) shortcuts: the same paths as the window's own controls; nothing is posted
+	elseif cmd == "prof" then
+		self:OpenTabSearch("professions", rawRest)
+	elseif cmd == "who" then
+		self:OpenTabSearch("status", rawRest)
+	elseif cmd == "lfg" then
+		local first, after = rawRest:match("^(%S+)%s*(.-)$")
+		local d = first and self:DungeonByShort(first)
+		local note = d and after or rawRest
+		if self:SlashLfg(d, note ~= "" and note or nil) then
+			self:Msg(L.SLASH_LFG_SET, self:DungeonName((self:GetOwnStatus() or {}).d))
+		end
+	elseif cmd == "clear" then
+		self:ClearAllOwn()
+		self:Msg(L.SLASH_CLEARED)
 	elseif cmd == "test" and rest:match("^post") and self.TestPost then
 		self:TestPost(rest:match("^post%s*(.*)$")) -- Features\Recruit.lua
 	elseif cmd == "ad" and self.PostAd then
@@ -192,7 +213,13 @@ function GH:OnSlash(input)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_TEST4)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_TESTAPI)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_MAP)
+		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_PROF)
+		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_WHO)
+		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_LFG)
+		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_CLEAR)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_FINDME)
+		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_PAUSE)
+		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_TESTTOAST)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_TESTMAP)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_RECRUIT)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_AD)
@@ -200,6 +227,30 @@ function GH:OnSlash(input)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_SELFTEST)
 		DEFAULT_CHAT_FRAME:AddMessage(L.HELP_OPTIONS)
 	end
+end
+
+-- 1.0.0-beta.2 (Q2): open the full window on a tab and fill its search box (Status / Professions).
+-- A switched-off tab falls back to Status (ShowTab); the text then goes nowhere.
+function GH:OpenTabSearch(key, text)
+	if self.miniFrame and self.miniFrame:IsShown() then self.miniFrame:Hide() end
+	local f = self:CreateMainFrame()
+	self:ShowTab(key)
+	f:Show()
+	if f.currentTab ~= key then return false end
+	local tab = key == "status" and self.statusTab or (key == "professions" and self.profTab)
+	if tab and tab.search then
+		tab.search:SetText(U.CleanText(text or "", 40) or "")
+		-- the search box's own OnTextChanged redraws too; drawn here as well so the list never lags
+		if key == "status" then
+			tab.offset, tab.toTop = 0, true
+			self:DrawStatusTab()
+		else
+			if self.WantRecipeLists then self:WantRecipeLists() end
+			if self.DrawProfessionsTab then self:DrawProfessionsTab(true) end
+		end
+		return true
+	end
+	return false
 end
 
 function GH:PrintStatus()

@@ -335,6 +335,90 @@ function ST.ProfParts()
     }
 end
 
+-- 1.0.0-beta.1: the My status panel (parts by state; the highlighted button and news strip only when
+-- they apply)
+function ST.MyStatusParts()
+    local t = GH.statusTab or {}
+    local mapOn = GH:FeatureOn("map")
+    local parts = {
+        { name = "my.title", obj = t.title },
+        { name = "my.state", obj = t.state },
+        { name = "my.note", obj = t.note },
+        { name = "my.lasts", obj = t.lasts },
+        { name = "my.clear", obj = t.clear, opt = true, shownOnly = true },
+        { name = "my.highlight", obj = t.highlight, opt = true, shownOnly = true },
+        { name = "my.news", obj = t.news, opt = true, shownOnly = true },
+        { name = "my.dungeon", obj = t.dungeon, opt = true, shownOnly = true },
+        { name = "my.pause", obj = t.pause, opt = true, shownOnly = true },
+        { name = "my.resume", obj = t.resume, opt = true, shownOnly = true },
+        { name = "my.findMe", obj = t.findMe, opt = not mapOn, shownOnly = not mapOn },
+    }
+    if t.preset then
+        parts[#parts + 1] = { name = "my.preset", obj = t.preset }
+    else
+        for p, b in pairs(t.chips or {}) do parts[#parts + 1] = { name = "my.chip." .. p, obj = b } end
+    end
+    return parts
+end
+
+-- 1.0.0-beta.1: the panel fits, a badge never changes the tab's size, the quoted note is cleaned,
+-- and the note queue's numbers. A badge drawn here is put back in the same frame (nothing shows).
+local function CheckMyStatus()
+    local t = GH.statusTab
+    if not (t and t.panel) then return Skip("mystatus", "(no panel)") end
+    Count()
+    local ph = Read(t.panel, "GetHeight")
+    if type(ph) == "number" and not IsSecret(ph) and type(t.layoutBottom) == "number" and -t.layoutBottom + 20 > ph then
+        Problem("MY", "panel", ("parts need %d px, the panel has %d"):format(-t.layoutBottom + 20, ph))
+    end
+    Count()
+    local tabB = GH.mainFrame and GH.mainFrame.tabs and GH.mainFrame.tabs.status
+    if tabB and GH.SetBadge then
+        local before = GH:BadgeCount("status")
+        local w0 = Read(tabB, "GetWidth")
+        GH:SetBadge("status", 3)
+        local w1 = Read(tabB, "GetWidth")
+        local b = GH.mainFrame.badgeParts and GH.mainFrame.badgeParts.status
+        local bw = b and Read(b, "GetWidth")
+        GH:SetBadge("status", before)
+        if w0 ~= w1 then Problem("MY", "badge", "the tab changed size with a badge") end
+        if type(bw) == "number" and not IsSecret(bw) and bw > 16 then Problem("MY", "badge", ("badge %d px wide"):format(bw)) end
+        run.state.badgeArt = b and b.art
+    end
+    Count()
+    local clean = GH.StripCodes and GH.StripCodes("|cffff0000red|r |Hitem:1|h[Sword]|h |TInterface\\Icons\\x:0|t end|")
+    if clean ~= "red [Sword] end" then Problem("MY", "strip", "the quoted note keeps codes: " .. tostring(clean)) end
+    local long = GH.CutBytes and GH.CutBytes(("\195\169"):rep(200), 255)
+    if not long or #long > 255 or #long % 2 ~= 0 then Problem("MY", "cut", "the line cut splits a letter") end
+    local st = GH.toastStats or {}
+    local quiet, why = false, nil
+    if GH.AlertsQuiet then quiet, why = GH:AlertsQuiet() end
+    Info(("toasts shown=%d held=%d queued=%d dropped=%d budget=%s quiet=%s paused=%s badge=%s preset=%s hi=%s news=%d"):format(
+        st.shown or 0, st.held or 0, st.queued or 0, st.dropped or 0, GH.db.profile.toastBudget ~= false and "y" or "n",
+        quiet and tostring(why) or "n", (GH.AlertsPausedLeft and GH:AlertsPausedLeft() > 0) and "y" or "n",
+        tostring(run.state.badgeArt or "-"), t.preset and "dd" or "chips", tostring(t.highlightKind or "-"), t.newsCount or 0))
+    -- 1.0.0-beta.1: WoW Forever's dungeon list: 38 entries, the picker shows the 3 Forever raids only
+    -- (classic ones hidden), sorted by level with raids last; an old number still reads as its name.
+    Count()
+    local list, order = GH.DUNGEONS or {}, GH.DUNGEON_ORDER or {}
+    local raids, hiddenIn, sorted, lastMin, seenRaid = 0, 0, true, 0, false
+    for pos = 2, #order do
+        local e = list[order[pos]]
+        if not e then sorted = false
+        elseif e.hidden then hiddenIn = hiddenIn + 1
+        elseif e.raid then raids, seenRaid = raids + 1, true
+        else
+            if seenRaid or e.min < lastMin then sorted = false end
+            lastMin = e.min
+        end
+    end
+    if #list < 38 then Problem("MY", "dungeons", ("%d dungeon entries, want 38"):format(#list)) end
+    if raids ~= 3 or hiddenIn > 0 then Problem("MY", "dungeons", ("picker raids %d (want 3), hidden ones shown %d"):format(raids, hiddenIn)) end
+    if order[1] ~= 0 or not sorted then Problem("MY", "dungeons", "the picker is not 'any' then by level, raids last") end
+    if not (list[22] and list[22].name == "Molten Core") then Problem("MY", "dungeons", "an old raid number no longer reads right") end
+    Info(("dungeons %d picker=%d newdng=%s"):format(#list, #order, GH.NewDungeonText and GH:NewDungeonText(true) or "?"))
+end
+
 -- 0.6.0-beta.3: the Map tab ("Who is where"): toolbar, list, panel (buttons by state)
 function ST.MapParts()
     local t = GH.mapTab or {}
@@ -384,7 +468,7 @@ end
 
 -- 0.6.0-beta.3: the name menu's entries (built, never opened: nothing pops up) on yourself and on one
 -- online guildmate; the action APIs only checked with type() (nothing is called).
-local MENU_ORDER = { whisper = 1, invite = 2, ask = 3, waypoint = 4, showmap = 5, joinme = 6, mute = 7, more = 8 }
+local MENU_ORDER = { whisper = 1, canhelp = 1.5, invite = 2, ask = 3, waypoint = 4, showmap = 5, joinme = 6, mute = 7, more = 8 }
 local function CheckMenuEntries(list, who)
     Count()
     local last, greyed = 0, 0
@@ -429,6 +513,88 @@ local function CheckNameMenu()
         y(MenuUtil and type(MenuUtil.CreateContextMenu) == "function"),
         y(C_Map and type(C_Map.SetUserWaypoint) == "function" and UiMapPoint and type(UiMapPoint.CreateFromCoordinates) == "function"),
         y(C_PartyInfo and type(C_PartyInfo.RequestInviteFromUnit) == "function"), y(type(_G.OpenWorldMap) == "function"), y(rinv)))
+end
+
+-- 1.0.0-beta.2: quick menu entries (built, never opened), a fold toggled and put back, tab tips,
+-- Promote/Demote/Remove only for officers, the new art parts, key bindings, the live subtitle.
+local QM_NAME_KEYS = { whisper = true, invite = true, ask = true, waypoint = true, showmap = true, joinme = true,
+    mute = true, promote = true, demote = true, remove = true }
+local function CheckQoL()
+    local function y(v) return v and "y" or "n" end
+    -- quick menu
+    Count()
+    local qm = GH.QuickMenuEntries and GH:QuickMenuEntries() or {}
+    local radios, ticked = 0, 0
+    for _, e in ipairs(qm) do
+        if e.kind == "radio" then
+            radios = radios + 1
+            if e.checked and e.checked() then ticked = ticked + 1 end
+        end
+        if e.key and QM_NAME_KEYS[e.key] then Problem("QM", e.key, "a name action in the quick menu") end
+        if (e.kind == "button" or e.kind == "radio") and type(e.run) ~= "function" then Problem("QM", e.key or "?", "entry without an action") end
+    end
+    if #qm == 0 or qm[1].kind ~= "title" or qm[#qm].key ~= "settings" then Problem("QM", "order", "title first and Settings last") end
+    if radios ~= #GH.PRESETS + 1 or ticked ~= 1 then Problem("QM", "status", ("%d status choices (%d ticked)"):format(radios, ticked)) end
+    -- fold: toggle one group and put it back (one frame, nothing is left changed)
+    Count()
+    local fold = "-"
+    local folded = GH.db.profile.folded
+    if GH.statusTab and GH.ToggleFold and type(folded) == "table" then
+        local before = folded.other
+        GH:ToggleFold("other")
+        local mid = folded.other
+        GH:ToggleFold("other")
+        if folded.other ~= before or mid == before then Problem("FOLD", "toggle", "a header click didn't fold / unfold") end
+        fold = "ok"
+    end
+    -- tab tips
+    Count()
+    local f = GH.mainFrame
+    local tips, tabs = 0, 0
+    for _, d in ipairs(f and f.tabList or {}) do
+        tabs = tabs + 1
+        local b = f.tabs[d.key]
+        if b and type(b.ghTip) == "string" and b.ghTip ~= "" then tips = tips + 1
+        else Problem("TIPS", d.key, "tab without a tooltip") end
+    end
+    -- Promote / Demote / Remove: only in an officer's menu on a non-officer member; Remove last
+    Count()
+    local n6 = "off"
+    local me = GH:MyName()
+    for _, e in ipairs(GH.NameMenuEntries and GH:NameMenuEntries(me, "selftest") or {}) do
+        if e.key == "promote" or e.key == "demote" or e.key == "remove" then Problem("N6", "self", "rank entries on yourself") end
+    end
+    for name, r in pairs(GH.roster or {}) do
+        if r.online and not GH:IsMyChar(name) and not GH:IsOfficer(name) then
+            local list = GH:NameMenuEntries(name, "selftest")
+            local found, lastKey = 0, nil
+            for _, e in ipairs(list) do
+                if e.key == "promote" or e.key == "demote" or e.key == "remove" then
+                    found = found + 1
+                    if not e.ok and (type(e.why) ~= "string" or e.why == "") then Problem("N6", e.key, "greyed without a reason") end
+                end
+                if e.key then lastKey = e.key end
+            end
+            local officer = IsInGuild() and GH:IsOfficer(me)
+            if not officer and found > 0 then Problem("N6", "member", "rank entries for a non-officer") end
+            if officer and (found ~= 3 or lastKey ~= "remove") then Problem("N6", "officer", ("%d rank entries, last %s"):format(found, tostring(lastKey))) end
+            n6 = officer and tostring(found) or "off"
+            break
+        end
+    end
+    -- art parts, bindings, subtitle
+    local bar, tick, cls, star = "?", "?", "?", "?"
+    if ns.Widgets.ArtReport then bar, tick, cls, star = ns.Widgets.ArtReport() end
+    local bind = "-"
+    if type(GetBindingKey) == "function" then
+        local ok, k = pcall(GetBindingKey, "GUILDHUB_TOGGLE")
+        bind = ok and (IsSecret(k) and "s" or (k and "set" or "unbound")) or "!"
+    end
+    Count()
+    if type(_G.BINDING_NAME_GUILDHUB_TOGGLE) ~= "string" then Problem("BIND", "names", "key binding names missing") end
+    local sub = f and f.sub and f.sub.GetText and f.sub:GetText()
+    Info(("qol qm=%d fold=%s tips=%d/%d n6=%s art bar=%s tick=%s class=%s star=%s bind=%s sub=%s"):format(#qm, fold, tips, tabs, n6,
+        bar, tick, cls, star, bind, y(type(sub) == "string" and not IsSecret(sub) and sub:find("%d") ~= nil)))
 end
 
 -- Guild Recruiter R1: the Recruiting tab's Overview page (officer controls only for officers)
@@ -907,10 +1073,13 @@ end
 
 local function StepMain()
     CheckGroup(ST.MainParts(), Win())
+    CheckGroup(ST.MyStatusParts(), Win())
+    Guard("mystatus", CheckMyStatus)
     Guard("tabrow", CheckTabRow)
     Guard("card", CheckCard)
     Guard("guide", CheckGuide)
     Guard("menu", CheckNameMenu)
+    Guard("qol", CheckQoL)
     if run.mode == "full" and GH:FeatureOn("prof") then
         -- the Professions tab (built on first show); Restore goes back to the page that was open
         run.state.prevTab = run.state.prevTab or GH.mainFrame.currentTab

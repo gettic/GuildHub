@@ -55,6 +55,15 @@ local function SetupRow(r)
 	r.request = W.Button(r, L.BTN_REQUEST, RCOL.request[2], 18)
 	r.request:SetPoint("LEFT", RCOL.request[1], 0)
 	r.request:SetScript("OnClick", function(self) if r.data and r.data.recipe then GH:ShowRequestPopup(r.data, self) end end)
+	-- 1.0.0-beta.2 (Q8): a greyed Request says why
+	if r.request.SetMotionScriptsWhileDisabled then r.request:SetMotionScriptsWhileDisabled(true) end
+	r.request:SetScript("OnEnter", function(self)
+		if self:IsEnabled() then return end
+		GameTooltip:SetOwner(self, "ANCHOR_TOP")
+		GameTooltip:AddLine(L.REQ_NONE_ONLINE, 1, 0.5, 0.25, true)
+		GameTooltip:Show()
+	end)
+	r.request:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	r:SetScript("OnEnter", function(self) GH:ProfRowTooltip(self, self.data) end)
 	r:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	-- 0.6.0-beta.3: right-click a crafter (directory row) = the name menu (UI\NameMenu.lua)
@@ -62,6 +71,42 @@ local function SetupRow(r)
 		local d = s.data
 		return d and not d.header and not d.recipe and d.name or nil
 	end, "prof")
+	-- 1.0.0-beta.2 (Q3): shift-click puts the recipe link (or the crafter's name) into the open chat box
+	r:HookScript("OnMouseUp", function(s, button)
+		if button == "LeftButton" and IsShiftKeyDown and IsShiftKeyDown() then GH:ProfShiftClick(s.data) end
+	end)
+end
+
+-- The text a shift-click inserts: the recipe's spell link, or "Name (Profession 300/300)".
+function GH:ProfLinkText(d)
+	if type(d) ~= "table" or d.header then return nil end
+	if d.recipe then
+		local link
+		if C_Spell and C_Spell.GetSpellLink then
+			local ok, l = pcall(C_Spell.GetSpellLink, d.recipe)
+			if ok and not U.IsSecret(l) then link = l end
+		end
+		if type(link) ~= "string" and GetSpellLink then
+			local ok, l = pcall(GetSpellLink, d.recipe)
+			if ok and not U.IsSecret(l) then link = l end
+		end
+		if type(link) == "string" and link ~= "" then return link end
+		return d.rname
+	end
+	if not d.name then return nil end
+	local skill = d.rank and d.max and (" %d/%d"):format(d.rank, d.max) or ""
+	return ("%s (%s%s)"):format(U.ShortName(d.name), self:ProfName(d.line), skill)
+end
+
+-- Only into the chat box (or the macro / search box the game picks); nothing is sent (tos Q3).
+-- Returns true when the game took the text.
+function GH:ProfShiftClick(d)
+	local text = self:ProfLinkText(d)
+	if not text then return false end
+	local fn = (ChatFrameUtil and ChatFrameUtil.InsertLink) or ChatEdit_InsertLink
+	if type(fn) ~= "function" then return false end
+	local ok, took = pcall(fn, text)
+	return ok and took and true or false
 end
 
 local DIR_PARTS = { "name", "prof", "skill", "spec", "recipes", "seen" }
@@ -444,7 +489,7 @@ function GH:BuildProfessionsTab(page)
 end
 
 -- Tab registry (UI\MainFrame.lua): the second tab, only while the professions feature is on.
-GH:RegisterTab({ key = "professions", order = 20, label = "TAB_PROF", sub = "WIN_SUB_PROF", feature = "prof",
+GH:RegisterTab({ key = "professions", order = 20, label = "TAB_PROF", sub = "WIN_SUB_PROF", tip = "TAB_TIP_PROF", feature = "prof",
 	show = function(gh, page) gh:ShowProfessionsTab(page) end })
 
 -- MainFrame ShowTab("professions"): build once, then draw. First use starts fetching lists.

@@ -248,6 +248,93 @@ function GH:JoinMe(name)
 end
 
 ------------------------------------------------------------------------
+-- I can help (1.0.0-beta.1; tos plans\next-beta-2\tos-check.md item 3): fills a whisper to that ONE
+-- guildmate who needs help, quoting their note; the player presses Enter. One per target per 60 s.
+------------------------------------------------------------------------
+local LINE_MAX = 255 -- bytes in one chat line
+
+-- Their note without any escape or link code (|c |r |H |h |T |t |A |a |K |k |n ...), and no "|" left.
+function GH.StripCodes(s)
+	if type(s) ~= "string" or U.IsSecret(s) then return nil end
+	s = s:gsub("|H.-|h(.-)|h", "%1")   -- a link: keep its shown text
+	s = s:gsub("|T.-|t", ""):gsub("|A.-|a", ""):gsub("|K.-|k", "")
+	s = s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|n", " ")
+	s = s:gsub("|%a", ""):gsub("|", "")
+	s = s:gsub("%s+", " "):gsub("^ ", ""):gsub(" $", "")
+	return s ~= "" and s or nil
+end
+
+-- Cut to at most n bytes without splitting a UTF-8 letter.
+local function CutBytes(s, n)
+	if #s <= n then return s end
+	s = s:sub(1, n)
+	local i = #s
+	while i > 0 do
+		local b = s:byte(i)
+		if b < 0x80 then break end          -- plain letter: the end is whole
+		if b >= 0xC0 then                    -- start of a letter: whole only if all its bytes are there
+			local need = b >= 0xF0 and 4 or b >= 0xE0 and 3 or 2
+			if #s - i + 1 < need then s = s:sub(1, i - 1) end
+			break
+		end
+		i = i - 1
+	end
+	return s
+end
+GH.CutBytes = CutBytes
+
+-- Their fresh Need-help status, or nil.
+local function NeedsHelp(gh, name)
+	local gdb = gh:GetGuildDB()
+	local m = gdb and gdb.members and gdb.members[name]
+	local s = type(m) == "table" and m.status
+	if type(s) == "table" and s.p == "help" and gh:IsStatusFresh(s) then return s end
+	return nil
+end
+GH.NeedsHelpStatus = function(gh, name) return NeedsHelp(gh, name) end
+
+function GH:CanHelpText(name)
+	local s = NeedsHelp(self, name)
+	local note = s and self.StripCodes(s.t)
+	local text = note and L.CANHELP_TEXT:format(note) or L.CANHELP_PLAIN
+	return CutBytes(text, LINE_MAX)
+end
+
+function GH:CanHelpState(name)
+	if type(name) ~= "string" then return false, "unknown" end
+	if self:IsMyChar(name) then return false, "self" end
+	if self.IsIgnored and self:IsIgnored(name) then return false, "ignored" end
+	if self:IsMuted(name) then return false, "muted" end
+	if not self:IsOnline(name) then return false, "offline" end
+	if not NeedsHelp(self, name) then return false, "notneed" end
+	local left = Cooldown("help", name)
+	if left > 0 then return false, "wait", math.ceil(left) end
+	return true
+end
+
+function GH:CanHelp(name)
+	if not self:CanHelpState(name) then return false end
+	local text = self:CanHelpText(name)
+	local target = U.WhisperName(name)
+	actAt["help:" .. name] = GetTime()
+	self.actStats.help = (self.actStats.help or 0) + 1
+	local fill = ChatFrameUtil and ChatFrameUtil.SendTellWithMessage
+	if not (fill and pcall(fill, target, text)) then OpenChatWith("/w " .. target .. " " .. text) end
+	if self.RefreshBoard then self:RefreshBoard() end -- the row's button greys for the wait
+	return true
+end
+
+-- The greyed button's tooltip (row, note): the reason.
+function GH:CanHelpTooltip(owner, name)
+	GameTooltip:SetOwner(owner, "ANCHOR_TOP")
+	GameTooltip:AddLine(L.BTN_CANHELP, 1, 0.82, 0)
+	GameTooltip:AddLine(L.CANHELP_TIP, 1, 1, 1, true)
+	local ok, why, secs = self:CanHelpState(name)
+	if not ok then GameTooltip:AddLine((L.ACT_WHY[why] or why):format(secs or 0), 1, 0.3, 0.3, true) end
+	GameTooltip:Show()
+end
+
+------------------------------------------------------------------------
 -- Mute alerts from someone (Status.lua GH:Mute) and the way back
 ------------------------------------------------------------------------
 function GH:Unmute(name)
@@ -256,4 +343,74 @@ function GH:Unmute(name)
 	muted[name] = nil
 	self:Msg(L.ACT_UNMUTED, U.ShortName(name))
 	self:RefreshBoard()
+end
+
+------------------------------------------------------------------------
+-- 1.0.0-beta.2 (N6): Promote / Demote / Remove from guild in the name menu's officer section
+-- (tos plans\next-beta-3\tos-check.md): each entry ONLY fills the chat box with the game's own
+-- command ("/gpromote Name") through ChatFrameUtil.OpenChat; the officer presses Enter. Never
+-- ChatEdit_SendText, never C_GuildInfo.Promote/Demote/Uninvite or GuildPromote/GuildDemote/
+-- GuildUninvite. One name per click. Greyed with a reason when the rank can't (the game's own
+-- CanGuildPromote/CanGuildDemote/CanGuildRemove, as Blizzard's GuildRoster.lua) or the command is
+-- missing on this server (SLASH_GUILD_PROMOTE1 ...). NameMenu.lua builds the officer section only
+-- for officers on non-officer members.
+------------------------------------------------------------------------
+GH.actStats.rank = 0
+local RANK_CMDS = {
+	promote = { slash = "SLASH_GUILD_PROMOTE1", can = "CanGuildPromote" },
+	demote  = { slash = "SLASH_GUILD_DEMOTE1", can = "CanGuildDemote" },
+	remove  = { slash = "SLASH_GUILD_UNINVITE1", can = "CanGuildRemove" },
+}
+GH.RANK_CMDS = RANK_CMDS
+
+-- The command text, or nil when the server has no such command.
+function GH:RankCommandText(kind, name)
+	local c = RANK_CMDS[kind]
+	local slash = c and _G[c.slash]
+	if type(slash) ~= "string" or slash == "" or type(name) ~= "string" or name == "" then return nil end
+	return slash .. " " .. U.WhisperName(name)
+end
+
+-- ok, why ("combat" / "noslash" / "rank" / "highest" / "lowest" / "self" / "notmember").
+function GH:RankActionState(kind, name)
+	local c = RANK_CMDS[kind]
+	if not c then return false, "api" end
+	if InCombat() then return false, "combat" end
+	if not self:RankCommandText(kind, name) then return false, "noslash" end
+	if self:IsMyChar(name) then return false, "self" end
+	local r, me = self.roster[name], self.roster[self:MyName()]
+	if not (r and me) then return false, "notmember" end
+	local can = _G[c.can]
+	local ok, allowed = false, false
+	if type(can) == "function" then ok, allowed = pcall(can) end
+	if not ok or U.IsSecret(allowed) or not allowed then return false, "rank_" .. kind end
+	local their, mine = r.rankIndex, me.rankIndex
+	if type(their) ~= "number" or type(mine) ~= "number" or their <= mine then return false, "rank_" .. kind end
+	if kind == "promote" and their <= mine + 1 then return false, "highest" end
+	if kind == "demote" then
+		local n = GuildControlGetNumRanks and GuildControlGetNumRanks()
+		if type(n) == "number" and not U.IsSecret(n) and their >= n - 1 then return false, "lowest" end
+	end
+	return true
+end
+
+-- One click: the command goes into the chat box, nothing is sent.
+function GH:RankAction(kind, name)
+	if not self:RankActionState(kind, name) then return false end
+	local text = self:RankCommandText(kind, name)
+	self.actStats.rank = self.actStats.rank + 1
+	OpenChatWith(text)
+	return true
+end
+
+-- The nameMenu "officer" hook entries (Status.lua registers it on the core status feature).
+function GH:RankMenuEntries(name)
+	local e = {}
+	for _, kind in ipairs({ "promote", "demote", "remove" }) do
+		local ok, why = self:RankActionState(kind, name)
+		e[#e + 1] = { key = kind, text = L["MENU_" .. kind:upper()], ok = ok and true or false,
+			why = not ok and (L.ACT_WHY[why] or why) or nil, red = kind == "remove" or nil,
+			run = function() GH:RankAction(kind, name) end }
+	end
+	return e
 end

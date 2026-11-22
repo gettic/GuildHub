@@ -71,14 +71,44 @@ GH.DUNGEONS = {
 	{ name = "Dire Maul", min = 55, max = 60 },
 	{ name = "Scholomance", min = 58, max = 60 },
 	{ name = "Stratholme", min = 58, max = 60 },
-	{ name = "Zul'Gurub", min = 60, max = 60, raid = true },
-	{ name = "Molten Core", min = 60, max = 60, raid = true },
-	{ name = "Onyxia's Lair", min = 60, max = 60, raid = true },
-	{ name = "Ruins of Ahn'Qiraj", min = 60, max = 60, raid = true },
-	{ name = "Blackwing Lair", min = 60, max = 60, raid = true },
-	{ name = "Temple of Ahn'Qiraj", min = 60, max = 60, raid = true },
-	{ name = "Naxxramas", min = 60, max = 60, raid = true },
+	-- classic raids: not offered on WoW Forever (warcraft.wiki.gg/wiki/WoW_Forever). Kept (the numbers are
+	-- sent) and `hidden`: not in the picker, but a status that names one (an older client) still reads right.
+	{ name = "Zul'Gurub", min = 60, max = 60, raid = true, hidden = true },
+	{ name = "Molten Core", min = 60, max = 60, raid = true, hidden = true },
+	{ name = "Onyxia's Lair", min = 60, max = 60, raid = true, size = 40 },
+	{ name = "Ruins of Ahn'Qiraj", min = 60, max = 60, raid = true, hidden = true },
+	{ name = "Blackwing Lair", min = 60, max = 60, raid = true, hidden = true },
+	{ name = "Temple of Ahn'Qiraj", min = 60, max = 60, raid = true, hidden = true },
+	{ name = "Naxxramas", min = 60, max = 60, raid = true, hidden = true },
+	-- 1.0.0-beta.1: WoW Forever's new dungeons (28-36) and raids (37-38), levels from warcraft.wiki.gg
+	{ name = "Hall of Thanes", min = 13, max = 20 },
+	{ name = "Ruins of Lordaeron", min = 15, max = 22 },
+	{ name = "Excavation Site: Wetlands", min = 26, max = 33 },
+	{ name = "City of Dalaran", min = 28, max = 35 },
+	{ name = "The Drowned City", min = 35, max = 42 },
+	{ name = "Krol'dok Stronghold", min = 40, max = 47 },
+	{ name = "Alcaz Prison", min = 48, max = 55 },
+	{ name = "Blackmaw Hold", min = 55, max = 60 },
+	{ name = "Shaper's Terrace", min = 58, max = 60 },
+	{ name = "Barrow Deeps", min = 60, max = 60, raid = true, size = 10 },
+	{ name = "Hyjal Summit", min = 60, max = 60, raid = true, size = 20 },
 }
+
+-- The picker's order (numbers stay as they are): 0 = any, then the dungeons by level, then the raids
+-- by size; hidden entries left out.
+do
+	local order = {}
+	for i, e in ipairs(GH.DUNGEONS) do if not e.hidden then order[#order + 1] = i end end
+	table.sort(order, function(a, b)
+		local x, y = GH.DUNGEONS[a], GH.DUNGEONS[b]
+		if (x.raid or false) ~= (y.raid or false) then return not x.raid end
+		if x.raid then return (x.size or 99) < (y.size or 99) end
+		if x.min ~= y.min then return x.min < y.min end
+		return a < b
+	end)
+	table.insert(order, 1, 0)
+	GH.DUNGEON_ORDER = order
+end
 
 -- Short names for the board row ("In a dungeon: RFC"). Keyed by instanceID, the 8th return of
 -- GetInstanceInfo (IDs from warcraft.wiki.gg "InstanceID"; not all seen on Forever yet, so
@@ -113,10 +143,23 @@ local INSTANCES = {
 	{ "AQ20", { 509 }, { "Ruins of Ahn'Qiraj" } },
 	{ "AQ40", { 531 }, { "Temple of Ahn'Qiraj", "Ahn'Qiraj Temple" } },
 	{ "Naxx", { 533 }, { "Naxxramas" } },
+	-- 1.0.0-beta.1: WoW Forever's new instances. IDs not known yet (the `newdng` probe reports them):
+	-- matched by the English zone name until then.
+	{ "HoT", {}, { "Hall of Thanes" } },
+	{ "RoL", {}, { "Ruins of Lordaeron" } },
+	{ "Excav", {}, { "Excavation Site: Wetlands", "Excavation Site" } },
+	{ "Dala", {}, { "City of Dalaran" } },
+	{ "Drowned", {}, { "The Drowned City", "Drowned City" } },
+	{ "Krol", {}, { "Krol'dok Stronghold" } },
+	{ "Alcaz", {}, { "Alcaz Prison" } },
+	{ "Blackmaw", {}, { "Blackmaw Hold" } },
+	{ "Shaper", {}, { "Shaper's Terrace" } },
+	{ "BD", {}, { "Barrow Deeps" }, true },
+	{ "Hyjal", {}, { "Hyjal Summit" }, true },
 }
 local INST_BY_ID, INST_BY_NAME = {}, {}
 for _, e in ipairs(INSTANCES) do
-	local entry = { short = e[1], name = e[3][1] }
+	local entry = { short = e[1], name = e[3][1], raid = e[4] or nil }
 	for _, id in ipairs(e[2]) do INST_BY_ID[id] = entry end
 	for _, n in ipairs(e[3]) do INST_BY_NAME[n] = entry end
 end
@@ -164,6 +207,18 @@ end
 
 -- Start (or restart) the clock of our own status. newStatus = true: back to 1 h;
 -- otherwise (note edit, dungeon change) the duration is kept.
+-- 1.0.0-beta.1: the own status's time always moves forward. Two changes in the same second would
+-- carry the same ts, and receivers keep only the first (newer wins, MergeStatus); so a quick second
+-- change goes 1 s ahead. The lead is capped at TS_AHEAD (receivers accept up to 1 h ahead: U.ValidTime).
+local TS_AHEAD = 30
+GH.STATUS_TS_AHEAD = TS_AHEAD
+local function StampTs(own)
+	local now = U.Now()
+	local ts = math.max(now, (type(own.ts) == "number" and own.ts == own.ts and own.ts or 0) + 1)
+	own.ts = math.min(ts, now + TS_AHEAD)
+end
+GH.StampTs = function(_, own) StampTs(own) end
+
 function GH:StampStatus(own, newStatus)
 	if own.p or own.t then
 		own.st = U.Now()
@@ -183,12 +238,169 @@ function GH:CycleStatusHours(step)
 	for i, h in ipairs(list) do if h == cur then idx = i end end
 	own.h = list[(idx - 1 + (step == -1 and -1 or 1)) % #list + 1]
 	if self:IsStatusFresh(own) then
-		own.ts = U.Now()
+		StampTs(own)
 		self:SendStatus()
 	else
 		self:CheckExpiry() -- made shorter than its age: it ends now
 	end
 	self:RefreshBoard()
+end
+
+-- 1.0.0-beta.1 "Lasts" dropdown: set the hours directly (1, 2, 4 or 8). Only while a status is set.
+function GH:SetStatusHours(h)
+	local own = self:GetOwnStatus()
+	if not own or not self:IsStatusFresh(own) or not HOURS_OK[h] or own.h == h then return end
+	own.h = h
+	if self:IsStatusFresh(own) then
+		StampTs(own)
+		self:SendStatus()
+	else
+		self:CheckExpiry() -- made shorter than its age: it ends now
+	end
+	self:RefreshBoard()
+end
+
+------------------------------------------------------------------------
+-- 1.0.0-beta.1: last LFG (2 h, this character only, never sent) and "Found a group?"
+------------------------------------------------------------------------
+local LAST_LFG_KEEP = 7200
+GH.LAST_LFG_KEEP = LAST_LFG_KEEP
+
+local function RememberLfg(own)
+	if not (own and own.p == "lfg" and GH:IsStatusFresh(own)) then return end
+	GH.db.char.lastLfg = { d = own.d or 0, t = own.t, at = U.Now() }
+end
+
+-- The remembered LFG ({d, t}) while it is under 2 h old; anything odd is dropped.
+function GH:LastLfg()
+	local c = self.db and self.db.char
+	local l = c and rawget(c, "lastLfg")
+	if l == nil then return nil end
+	local ok = type(l) == "table" and type(l.at) == "number" and type(l.d) == "number" and l.d == floor(l.d)
+		and l.d >= 0 and l.d <= #self.DUNGEONS and (l.t == nil or type(l.t) == "string")
+	if not ok or U.Now() - l.at >= LAST_LFG_KEEP or U.Now() - l.at < -60 then
+		c.lastLfg = nil
+		return nil
+	end
+	return { d = l.d, t = l.t and U.CleanText(l.t, NOTE_MAX) or nil }
+end
+
+-- "LFG again: X" (a click only): the remembered dungeon and note come back.
+-- One stamp and one STATUS for dungeon + note: two sends in the same second carry the same ts, and
+-- the receivers keep only the first (newer wins), so the note would never arrive.
+function GH:LfgAgain()
+	local l = self:LastLfg()
+	local own = self:GetOwnStatus()
+	if not (l and own) then return end
+	self.db.char.lastLfg = nil
+	own.p, own.pt, own.d, own.t = "lfg", U.Now(), l.d, l.t
+	self:StampStatus(own, true) -- a new status starts at 1 h
+	StampTs(own)
+	self:SendStatus()
+	self:RefreshBoard()
+end
+
+-- 1.0.0-beta.2 (Q2): a dungeon from a short name ("strat", "hot", "lbrs"; the board's short names,
+-- any case). Hidden (old classic raid) entries never match. Returns the DUNGEONS index or nil.
+local SHORT_ALIASES = { lbrs = "Lower Blackrock Spire", ubrs = "Upper Blackrock Spire", dire = "Dire Maul",
+	diremaul = "Dire Maul", dm = "The Deadmines", vc = "The Deadmines", stocks = "The Stockade", st = "Sunken Temple" }
+local dungeonByShort
+function GH:DungeonByShort(word)
+	if type(word) ~= "string" or word == "" then return nil end
+	if not dungeonByShort then
+		dungeonByShort = {}
+		local byName = {}
+		for i, e in ipairs(self.DUNGEONS) do
+			if not e.hidden then byName[e.name] = i end
+		end
+		for _, e in ipairs(INSTANCES) do
+			for _, n in ipairs(e[3]) do
+				if byName[n] then dungeonByShort[e[1]:lower():gsub("%s", "")] = byName[n] break end
+			end
+		end
+		for k, n in pairs(SHORT_ALIASES) do
+			if byName[n] then dungeonByShort[k] = byName[n] end
+		end
+	end
+	return dungeonByShort[word:lower()]
+end
+
+-- GROUP_ROSTER_UPDATE: a group of 2+ after being solo while LFG / Need help only REMEMBERS it,
+-- so My status shows "Found a group? Clear LFG". The clear itself only runs from that button (tos).
+function GH:CheckFoundGroup()
+	local n = self:GroupInfo()
+	if not n then return end
+	local prev = self.lastGroupN
+	self.lastGroupN = n
+	if n <= 1 then
+		self.foundGroup = nil
+		return
+	end
+	if prev and prev <= 1 then
+		local own = self:GetOwnStatus()
+		if own and self:IsStatusFresh(own) and (own.p == "lfg" or own.p == "help") then
+			self.foundGroup = { p = own.p, st = own.st }
+		end
+	end
+end
+
+-- "lfg" / "help" while the found-group button applies, else nil.
+function GH:FoundGroupKind()
+	local fg = self.foundGroup
+	if not fg then return nil end
+	local own = self:GetOwnStatus()
+	local n = self:GroupInfo()
+	if own and self:IsStatusFresh(own) and own.p == fg.p and own.st == fg.st and n and n >= 2 then return fg.p end
+	return nil
+end
+
+-- The button's click (never anything else): clears the status.
+function GH:ClearFoundGroup()
+	if not self:FoundGroupKind() then return end
+	self.foundGroup = nil
+	self:ClearStatus()
+end
+
+------------------------------------------------------------------------
+-- 1.0.0-beta.1: LFG match ("2 others want Scholomance"): fresh LFG statuses for the same dungeon
+------------------------------------------------------------------------
+function GH:LfgMatches()
+	local own = self:GetOwnStatus()
+	if not (own and self:IsStatusFresh(own) and own.p == "lfg" and type(own.d) == "number" and own.d > 0) then return {}, nil end
+	local gdb = self:GetGuildDB()
+	local list = {}
+	for name, m in pairs(gdb and gdb.members or {}) do
+		local s = type(m) == "table" and m.status
+		if type(s) == "table" and s.p == "lfg" and s.d == own.d and self:IsStatusFresh(s) and name ~= self:MyName()
+			and not self:IsMyChar(name) and not self:IsMuted(name) and not (self.IsIgnored and self:IsIgnored(name))
+			and self:IsOnline(name) then
+			local r = self.roster[name]
+			list[#list + 1] = { name = name, class = (r and r.class) or m.class, level = (r and r.level) or m.level, note = s.t }
+		end
+	end
+	table.sort(list, function(a, b) return a.name < b.name end)
+	return list, own.d
+end
+
+-- May we invite this match right now? ok, why (combat / self / offline / ignored / muted / ingroupthem / full).
+function GH:LfgMatchState(name)
+	if InCombatLockdown() then return false, "combat" end
+	if type(name) ~= "string" or self:IsMyChar(name) then return false, "self" end
+	if self.IsIgnored and self:IsIgnored(name) then return false, "ignored" end
+	if self:IsMuted(name) then return false, "muted" end
+	if not self:IsOnline(name) then return false, "offline" end
+	if self.myGroup[name] then return false, "ingroupthem" end
+	local u = self.addonUsers and self.addonUsers[name]
+	local g = self:CanUse("group") and u and u.grp
+	if g and g.g and g.g >= (g.r and 40 or 5) then return false, "full" end
+	return true
+end
+
+-- The Invite button in the match popup: one InviteUnit per click, from the click only (tos).
+function GH:InviteMatch(name)
+	if not self:LfgMatchState(name) then return false end
+	self:InviteMember(name)
+	return true
 end
 
 function GH:IsMuted(name)
@@ -224,6 +436,29 @@ local function UsedStatus(set)
 	if GH.RefreshGuide then GH:RefreshGuide() end
 end
 
+-- /ghub lfg [short] [note] (a typed command = one click): LFG with that dungeon (else "any") and the
+-- note, in ONE stamp and ONE STATUS (like LfgAgain). No note given: an LFG note you already had stays.
+function GH:SlashLfg(d, note)
+	local own = self:GetOwnStatus()
+	if not own then return false end
+	local fresh = self:IsStatusFresh(own)
+	local newStatus = own.p ~= "lfg" or not fresh
+	if newStatus then
+		if not fresh or own.p then own.t = nil end -- as SetPreset: a note typed before any preset stays
+		own.p, own.pt = "lfg", U.Now()
+	end
+	if d then own.d = d elseif newStatus then own.d = 0 end
+	local t = note and U.CleanText(note, NOTE_MAX)
+	if t and t ~= "" then own.t = t end
+	self:StampStatus(own, newStatus)
+	StampTs(own)
+	self:SendStatus()
+	self:RefreshBoard()
+	UsedStatus(true)
+	if self.UpdateOwnPanel then self:UpdateOwnPanel(true) end
+	return true
+end
+
 -- Turn a preset on; clicking the active one again turns it off.
 function GH:SetPreset(p)
 	if p ~= nil and not PRESET_OK[p] then return end
@@ -235,12 +470,15 @@ function GH:SetPreset(p)
 	if not fresh then own.t = nil end -- an old note doesn't come back
 	-- switching to another preset or turning it off clears the old note;
 	-- a note typed before any preset stays and goes with the new preset
-	if fresh and own.p and own.p ~= p then own.t = nil end
+	if fresh and own.p and own.p ~= p then
+		if own.p == "lfg" then RememberLfg(own) end
+		own.t = nil
+	end
 	own.p = p
 	if p == "lfg" then own.d = own.d or 0 else own.d = nil end
 	self:StampStatus(own, p ~= nil) -- a newly picked preset starts at 1 h
 	own.pt = (p == "lfg" or p == "help") and now or nil
-	own.ts = now
+	StampTs(own)
 	self:SendStatus()
 	self:RefreshBoard()
 	UsedStatus(p ~= nil)
@@ -253,10 +491,9 @@ function GH:SetStatusText(text)
 	local wasFresh = self:IsStatusFresh(own)
 	if not wasFresh then own.p, own.d = nil, nil end
 	if t == own.t then return end
-	local now = U.Now()
 	own.t = t
 	self:StampStatus(own, not wasFresh) -- a note with no status yet starts at 1 h; editing keeps it
-	own.ts = now
+	StampTs(own)
 	self:SendStatus()
 	self:RefreshBoard()
 	UsedStatus(t ~= nil and t ~= "")
@@ -273,7 +510,7 @@ function GH:SetLfgDungeon(d)
 	end
 	own.d = d
 	self:StampStatus(own, newStatus) -- dungeon-only change keeps the duration
-	own.ts = U.Now()
+	StampTs(own)
 	self:SendStatus()
 	self:RefreshBoard()
 	UsedStatus(true)
@@ -282,8 +519,9 @@ end
 function GH:ClearStatus()
 	local own = self:GetOwnStatus()
 	if not own then return end
+	RememberLfg(own) -- 1.0.0-beta.1 "LFG again"
 	own.p, own.t, own.d, own.st, own.pt, own.h = nil, nil, nil, nil, nil, nil
-	own.ts = U.Now()
+	StampTs(own)
 	self:SendStatus()
 	self:RefreshBoard()
 end
@@ -414,7 +652,10 @@ function GH:MaybeAlert(sender, st, prevP, level)
 		text = note and L.ALERT_HELP:format(who, note) or L.ALERT_HELP_PLAIN:format(who)
 	end
 	self:Msg("%s", text) -- our own chat frame only, never sent anywhere
-	if not InCombatLockdown() and self.ShowToast then
+	-- 1.0.0-beta.1: through the one queue (UI\Toasts.lua): quiet rules and the budget may hold it as a badge
+	if self.QueueToast then
+		self:QueueToast({ kind = p, sender = sender, text = text, tab = "status" })
+	elseif not InCombatLockdown() and self.ShowToast then
 		self:ShowToast(sender, text)
 	end
 end
@@ -524,9 +765,55 @@ function GH:EvalActivity(force)
 	if cand ~= own.a then own.as = cand and U.Now() or nil end -- another instance keeps "for X min"
 	own.a = cand
 	own.i = candI
-	own.ts = U.Now()
+	StampTs(own)
 	self:SendStatus()
 	self:RefreshBoard()
+end
+
+------------------------------------------------------------------------
+-- 1.0.0-beta.1 `newdng` probe: WoW Forever's new dungeons and raids have no instanceID or door spot
+-- in our tables yet. When we enter an instance we don't know, remember its ID, name and the last
+-- open-world spot we stood on before going in, so `/ghub test activity` / `/ghub test api` can show
+-- them and the next beta can fill the tables. Session memory only: never saved, never sent.
+------------------------------------------------------------------------
+local NEWDNG_MAX = 5
+GH.newDng = {}       -- list of { id, name, kind, m, x, y } (memory only)
+local lastOutside    -- { m, x, y } of the last open-world position read (memory only)
+
+function GH:NoteNewDungeon()
+	local okI, inInst, itype = pcall(IsInInstance)
+	if not okI or U.IsSecret(inInst) or U.IsSecret(itype) then return end
+	if not inInst then
+		local m, x, y = self:OwnPosition()
+		if m then lastOutside = { m = m, x = x, y = y } end
+		return
+	end
+	if itype ~= "party" and itype ~= "raid" then return end
+	local id = self:CurrentInstance()
+	if not id or INST_BY_ID[id] then return end
+	for _, n in ipairs(self.newDng) do
+		if n.id == id then return end
+	end
+	local okN, name = pcall(GetInstanceInfo)
+	name = okN and not U.IsSecret(name) and U.CleanText(name, 40) or "?"
+	local o = lastOutside or {}
+	table.insert(self.newDng, 1, { id = id, name = name, kind = itype, m = o.m, x = o.x, y = o.y })
+	self.newDng[NEWDNG_MAX + 1] = nil
+end
+
+-- One line per new instance seen, e.g. "2310 Hall of Thanes (party) from 1426 0.452,0.318".
+function GH:NewDungeonText(compact)
+	if #self.newDng == 0 then return compact and "-" or L.TEST_NEWDNG_NONE end
+	local parts = {}
+	for _, n in ipairs(self.newDng) do
+		local at = n.m and ("%d:%.3f,%.3f"):format(n.m, n.x, n.y) or "?"
+		if compact then
+			parts[#parts + 1] = ("%d@%s"):format(n.id, at)
+		else
+			parts[#parts + 1] = ("%d %s (%s) from %s"):format(n.id, n.name, n.kind, at)
+		end
+	end
+	return table.concat(parts, compact and ";" or " · ")
 end
 
 local function IsUsable(...)
@@ -567,6 +854,7 @@ local function OnStatusEvent(event, ...)
 	end
 	GH:EvalActivity()
 	if event == "ZONE_CHANGED_NEW_AREA" or event == "PLAYER_ENTERING_WORLD" then
+		GH:NoteNewDungeon()
 		GH:RefreshBoard() -- own row zone is read live
 	end
 end
@@ -579,6 +867,8 @@ GH:RegisterFeature({
 		STATUS = { class = "live", min = 10, keep = true, latest = true },
 		GRP    = { class = "live", min = 15, keep = true, latest = true }, -- also waits for 2 s without roster changes
 	},
+	-- 1.0.0-beta.2 (N6): Promote / Demote / Remove from guild, last in the officer section (Features\Actions.lua)
+	nameMenu = { { kind = "officer", order = 90, fn = function(gh, name) return gh.RankMenuEntries and gh:RankMenuEntries(name) or {} end } },
 })
 
 function GH:InitStatus()
@@ -591,9 +881,13 @@ function GH:InitStatus()
 		self:On("status", e, OnStatusEvent)
 	end
 	self:ScanMyGroup()
+	self.lastGroupN = self:GroupInfo() -- a group we log in with is not "found"
 	local xp = UnitXP("player")
 	if not U.IsSecret(xp) then self.lastXP = xp end
-	self:Every("status", "evalActivity", EVAL_SECONDS, function() GH:EvalActivity() end)
+	self:Every("status", "evalActivity", EVAL_SECONDS, function()
+		GH:EvalActivity()
+		GH:NoteNewDungeon() -- keeps the last open-world spot fresh for the newdng probe
+	end)
 	self:Every("status", "checkExpiry", EXPIRY_SECONDS, function() GH:CheckExpiry() end)
 	self:CheckExpiry()
 	self:EvalActivity()
@@ -619,6 +913,7 @@ function GH:TestActivity()
 		self.db.profile.autoActivity and L.YES or L.NO, tostring(self.lastSpellID or "-"),
 		ago(a.quest), ago(a.xp), IsResting() and L.YES or L.NO, inInst and tostring(itype) or L.NO,
 		id and (short and ("%d (%s)"):format(id, short) or tostring(id)) or "-")
+	self:Msg(L.TEST_NEWDNG, self:NewDungeonText())
 end
 
 function GH:TestExpire()
@@ -695,6 +990,8 @@ end
 -- GROUP_ROSTER_UPDATE: update our list at once, share the size after 2 s of quiet.
 function GH:OnGroupChanged()
 	self:ScanMyGroup()
+	if self.MapGroupChanged then self.MapGroupChanged() end -- map dots of who joined / left (MapPins.lua; one scan)
+	self:CheckFoundGroup() -- 1.0.0-beta.1: only remembers it; the button clears
 	self:RefreshBoard()
 	if self.groupTimer then self:CancelTimer(self.groupTimer) end
 	self.groupTimer = self:ScheduleTimer(function()
@@ -805,7 +1102,7 @@ function GH:LiveZone()
 end
 
 -- opts: { search = "text", sort = "activity"|"level"|"zone"|"rank"|"name", compact = bool, showNoAddon = bool,
---         skipSelf = bool (mini window) }
+--         skipSelf = bool (mini window), folded = { [group] = true } (Status tab, activity sort) }
 -- Returns rows, onlineCount, withAddonCount. Header rows: { header = group, count = n }.
 function GH:BuildStatusRows(opts)
 	opts = opts or {}
@@ -876,14 +1173,20 @@ function GH:BuildStatusRows(opts)
 	end)
 
 	if sort ~= "activity" then return list, online, withAddon end
+	-- 1.0.0-beta.2 (Q5): opts.folded = { [group] = true } (profile.folded): the header stays with its
+	-- count, its rows are left out
+	local folded = type(opts.folded) == "table" and opts.folded or nil
 	local rows, i = {}, 1
 	while i <= #list do
 		local g, n = list[i].group, 0
 		for j = i, #list do
 			if list[j].group == g then n = n + 1 else break end
 		end
-		rows[#rows + 1] = { header = g, count = n }
-		for j = i, i + n - 1 do rows[#rows + 1] = list[j] end
+		local isFolded = folded and folded[g] == true or nil
+		rows[#rows + 1] = { header = g, count = n, folded = isFolded }
+		if not isFolded then
+			for j = i, i + n - 1 do rows[#rows + 1] = list[j] end
+		end
 		i = i + n
 	end
 	return rows, online, withAddon
@@ -907,6 +1210,10 @@ function GH:DrawBoards()
 end
 
 function GH:RefreshBoard(now)
+	-- 1.0.0-beta.2 (Q7): the title bar counts follow every board refresh, on any tab (a plain count
+	-- over our guild list copy; no GuildRoster request)
+	local f = self.mainFrame
+	if f and f:IsShown() and self.UpdateSubtitle then self:UpdateSubtitle() end
 	local main, mini = self:BoardsShown()
 	if not (main or mini) then return end
 	if now then
