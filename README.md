@@ -39,6 +39,7 @@ The Recruiting page only shows when the Guild Recruiter is on. On Trial and Vete
 - A Guild Recruiter (beta): a Recruiting tab with what the guild needs, the guild makeup, the guild's ad to post or copy, and lists for officers.
 - A Boards tab with a Raid board: who is ready for a raid, lockouts, resistances, the raid makeup and tonight's raid.
 - A "Need a rez" status, with calm notes for healers.
+- A gear viewer: see what a guildmate wears, with marks for missing enchants (see [Gear](#gear)).
 
 ## Status board
 
@@ -115,6 +116,7 @@ Right-click a name to open a menu. It works on the Status list, the mini window,
 | Show on map | Opens the world map on their spot (or their zone) |
 | Join me | Fills a whisper with your own zone and spot. You press Enter to send it |
 | Mute alerts / Unmute | Stops or restores alerts from that player |
+| View gear | Opens their gear (see [Gear](#gear)) |
 | More | Copy name, and Show professions |
 
 Officers also get an Officer part on guild members, with Start trial, End trial (see [Guild Recruiter](#guild-recruiter)), Promote, Demote and Remove from guild (red, last). Promote, Demote and Remove only type the game's own command (for example `/gpromote Name`) into your chat box: you press Enter. They are greyed, with the reason on hover, when your rank can't do it, or when the server lacks the command. Each entry runs only from your click: Guild Hub never sends anything by itself for these.
@@ -129,7 +131,9 @@ Open each of your profession windows once, so Guild Hub can read your recipes.
 
 **Your own characters.** Guild Hub remembers every character you log in with on this account. This stays on your PC and is never sent to anyone. In the recipe search, the request popup and the "crafted by" tooltip, they show in gold as "You" or "You (alt): Name". They have no Whisper or Request button ("log in to craft") and are listed after your guildmates. The status board never offers Whisper or Invite for them. Each alt is recognised after it has logged in once with this version. A character is forgotten when you haven't played it for a year, or at once if it shows up online while you are logged in (then it isn't yours).
 
-**Tooltips.** Item tooltips get one extra line, "Guild Hub: crafted by ...", when a guildmate can make the item. It never shows in combat. You can turn it off in the settings.
+**Tooltips.** Item tooltips get one extra line, "Guild Hub: crafted by ...", when a guildmate can make the item. It never shows in combat. You can turn it off in the settings. Recipe items can also get a "Could learn this: Bob, Dana" line: guildmates with that profession and enough skill who don't know the recipe yet. It uses data Guild Hub already has and asks nothing. Switch it off in Settings > Professions.
+
+**Ask guild list.** A recipe row has an "Ask guild list" button. It asks the game's own guild recipe list who knows the recipe, also guildmates without Guild Hub. It is one question per click, at least 3 seconds apart. The names are only shown, never saved or sent. If the game doesn't answer, the button hides until you reload.
 
 **Privacy.** "Share my professions" in the settings is on by default. Turning it off tells the guild to forget your professions. Guild Hub only fetches recipe lists after you first use the Professions tab, the search or a tooltip, and sends them slowly to keep the chat channel free. Professions of players who leave the guild are deleted.
 
@@ -233,6 +237,19 @@ For offline guildmates you see their role, attunement and lockouts. The list can
 
 **Combat log.** Inside a raid, a reminder with a "Start logging" button shows, only if the game allows it. One click starts the log. It never starts by itself.
 
+## Gear
+
+Right-click an online guildmate and pick "View gear" to see what they wear. Hover an item for its tooltip. Shift-click it to put its link in your chat box (nothing is sent until you press Enter).
+
+- Gear is asked only when you open the panel, only from online guildmates with Guild Hub 1.0.2 or newer, and sent as numbers only (no names or links).
+- Fair trade: share your own gear (Settings > What I share > Gear) to see others' (see [Fair trade](#fair-trade)).
+- If they are offline or don't answer, you see a saved copy and its age, if there is one.
+- When someone turns gear sharing off, the copies others saved of their gear are deleted. A player's saved gear is also deleted once they have been missing from the guild list for a minute (they left the guild).
+
+**Missing enchants.** The gear panel marks slots without an enchant (back, chest, wrists, hands, feet, main hand, shield and a hunter's ranged weapon) with an orange "!". The Raid board has an Enchants column, and the hover card can show "Gear: 2 enchants missing". This is only on your own screen and never posted. Settings > Gear can switch the marks and the hover line off.
+
+**Check enchants** (officers, in a raid). One button on the Raid board asks each raid member with Guild Hub for their gear, one every 4 seconds. It stops in combat or in an instance, and can be used again after 5 minutes. The results stay on your screen.
+
 ## Fair trade
 
 What you don't share, you can't see from others either:
@@ -243,6 +260,7 @@ What you don't share, you can't see from others either:
 | Your professions | The Professions tab is locked, with a button to share |
 | Your group size | The GROUP column shows "-" |
 | Your raid info | The Ready, Lockouts and Resistances views are locked |
+| Your gear | You can't view others' gear |
 
 Trial and Veteran accounts can't share, so these parts are locked for them. The status board stays open to everyone. Settings > What I share lists each item.
 
@@ -286,11 +304,11 @@ Under Esc > Key Bindings > AddOns > Guild Hub you can set keys for "Open / close
 
 ## Settings
 
-Click the gear button in the title bar of the `/ghub` window (left of the "-"), or use `/ghub options` or "Settings" in the minimap button's quick menu. Click the gear again to go back to Status. The same settings are in Esc > Options > AddOns > Guild Hub. There you can switch off automatic activity, the "crafted by" tooltip line and the notes, set the quiet limit for notes, pause notes for 1 hour, unmute players, show or hide guildmates without Guild Hub, hide the minimap button, and turn the guild dots on the minimap on or off. The "Getting started" button opens the Getting started walkthrough. Raid settings (role, raid fields, "Rez available") are there too, and a switch for the "New in" note: a small card shown once after an update (never in combat or in an instance). The Guild Master sets which ranks count as officers.
+Click the gear button in the title bar of the `/ghub` window (left of the "-"), or use `/ghub options` or "Settings" in the minimap button's quick menu. Click the gear again to go back to Status. The same settings are in Esc > Options > AddOns > Guild Hub. Settings are sorted into 9 groups: What I share, Status board, Professions, Map, Raid, Gear, Recruiting, Features and Debug. Between them you can switch off automatic activity, the "crafted by" tooltip line and the notes, set the quiet limit for notes, pause notes for 1 hour, unmute players, show or hide guildmates without Guild Hub, hide the minimap button, and turn the guild dots on the minimap on or off. The "Getting started" button opens the Getting started walkthrough. Raid settings (role, raid fields, "Rez available") are there too, and a switch for the "New in" note: a small card shown once after an update (never in combat or in an instance). The Guild Master sets which ranks count as officers.
 
-**What I share.** This is at the top of Settings. It has one line each for your position, your professions, your group size, your raid info and your hearthstone location. Each line says "off = you also can't see others'" (see Fair trade). Trial and Veteran accounts can't share, so these lines are locked for them.
+**What I share.** This is at the top of Settings. It has one line each for your position, your professions, your group size, your raid info, your gear and your hearthstone location. Each line says "off = you also can't see others'" (see Fair trade). Trial and Veteran accounts can't share, so these lines are locked for them.
 
-**Features.** The Features section lets you switch Professions, the Guild map and the Guild Recruiter on or off for yourself, and turn "Keep guild history on this computer" on or off (on by default). Officers can also switch a part off for the whole guild. They can only switch things off, never on, and the switch stops counting if they lose their officer rank.
+**Features.** The Features section lets you switch Professions, the Guild map, the Gear viewer and the Guild Recruiter on or off for yourself, and turn "Keep guild history on this computer" on or off (on by default). Officers can also switch a part off for the whole guild. They can only switch things off, never on, and the switch stops counting if they lose their officer rank.
 
 **Guild history.** With "Keep guild history on this computer" on, Guild Hub saves these on your computer only. Nothing is sent to anyone:
 
@@ -343,9 +361,13 @@ The addon lives in `GuildHub\`. Files are loaded in this order (see `GuildHub_Fo
 | `Features\RecruitAds.lua` | Guild Recruiter: the ad builder and the long post |
 | `Features\RecruitBuddy.lua` | Guild Recruiter: buddies and "gone quiet" |
 | `Features\Recruit.lua` | Guild Recruiter: needs, ad, posting and limits, post button, join notes |
+| `Blob.lua` | Per-member lists asked for only when someone looks (used by the gear viewer) |
 | `Features\Raid.lua` | Raid check: reading and sharing raid info, board rows, makeup |
 | `Features\RaidNight.lua` | Raid night: calendar answers, summon queue, ticks, Need a rez notes, "New in" card |
+| `Features\Gear.lua` | Gear viewer: reading and sharing gear, missing enchants, Check enchants |
+| `Features\Crafters.lua` | Ask guild list and the "Could learn this" tooltip line |
 | `UI\Widgets.lua` | Buttons, text boxes and the alert note |
+| `UI\ItemButton.lua` | The item button (tooltip, shift-click, missing-enchant mark) |
 | `UI\Toasts.lua` | The pop-up note queue: quiet rules, pause and the counts on tabs |
 | `UI\MainFrame.lua` | The window, its tabs, the gear button and the minimap button |
 | `UI\StatusTab.lua` | The status board tab |
@@ -362,6 +384,7 @@ The addon lives in `GuildHub\`. Files are loaded in this order (see `GuildHub_Fo
 | `UI\MapTab.lua` | The Map tab ("Who is where") |
 | `UI\Table.lua` | Sortable tables |
 | `UI\BoardsTab.lua` | The Boards tab (Raid board) |
+| `UI\GearPanel.lua` | The gear panel |
 | `Options.lua` | Settings (the Settings page in the window and the Options page) |
 | `ApiTest.lua` | The `/ghub test api` check |
 | `SelfTest.lua` | The `/ghub selftest` check |

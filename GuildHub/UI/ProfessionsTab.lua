@@ -15,7 +15,7 @@ local COL = {
 	seen = { 568, 100 }, whisper = { 672, 58 },
 }
 -- recipe (search) columns
-local RCOL = { icon = { 8, 18 }, rname = { 30, 220 }, prof = { 254, 110 }, crafters = { 368, 300 }, request = { 672, 90 } }
+local RCOL = { icon = { 8, 18 }, rname = { 30, 220 }, prof = { 254, 110 }, crafters = { 368, 206 }, ask = { 578, 92 }, request = { 674, 90 } }
 local PANEL_LINES = 8
 GH.PROF_COLUMNS, GH.PROF_RCOLUMNS = COL, RCOL
 
@@ -64,6 +64,25 @@ local function SetupRow(r)
 		GameTooltip:Show()
 	end)
 	r.request:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	-- 1.0.2 M3: "Ask guild list" (Features\Crafters.lua: one question per click, >= 3 s apart)
+	r.ask = W.Button(r, L.BTN_ASK_GUILD, RCOL.ask[2], 18)
+	r.ask:SetPoint("LEFT", RCOL.ask[1], 0)
+	if r.ask.SetMotionScriptsWhileDisabled then r.ask:SetMotionScriptsWhileDisabled(true) end
+	r.ask:SetScript("OnClick", function(self)
+		local d = r.data
+		if d and d.recipe and GH:AskGuildList(d.line, d.recipe, d.rname) then
+			GH.guildListAnchor = self
+			GH:DrawProfRows()
+		end
+	end)
+	r.ask:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_TOP")
+		GameTooltip:AddLine(L.ASK_GUILD_TIP, 1, 1, 1, true)
+		local ok, why, secs = GH:GuildListState()
+		if not ok then GameTooltip:AddLine((L.ASK_GUILD_WHY[why] or why or ""):format(secs or 0), 1, 0.5, 0.25, true) end
+		GameTooltip:Show()
+	end)
+	r.ask:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	r:SetScript("OnEnter", function(self) GH:ProfRowTooltip(self, self.data) end)
 	r:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	-- 0.6.0-beta.3: right-click a crafter (directory row) = the name menu (UI\NameMenu.lua)
@@ -141,6 +160,7 @@ local function FillRow(r, d)
 	Show(r, REC_PARTS, isRecipe)
 	r.whisper:SetShown(not isHeader and not isRecipe and not d.isSelf and not d.mine) -- never yourself / your alts
 	r.request:SetShown(isRecipe)
+	r.ask:SetShown(isRecipe and not GH.m3.hidden and GH:FeatureOn("prof"))
 	if isHeader then
 		r.header:SetText(("%s (%d)"):format(GH:ProfName(d.header), d.count))
 		r.header:SetTextColor(W.GOLD[1], W.GOLD[2], W.GOLD[3])
@@ -158,6 +178,11 @@ local function FillRow(r, d)
 		local anyOnline = d.onlineCount > 0
 		r.request:SetEnabled(anyOnline)
 		r.request:SetGreyed(not anyOnline)
+		local can = GH:GuildListState()
+		local asking = GH.m3.pending and GH.m3.pending.recipe == d.recipe
+		r.ask:SetLabel(asking and L.BTN_ASKING or L.BTN_ASK_GUILD)
+		r.ask:SetEnabled(can and true or false)
+		r.ask:SetGreyed(not can)
 		return
 	end
 	local shown = U.ClassColored(d.name, d.class)
@@ -601,4 +626,69 @@ function GH:DrawProfPanel()
 			fs:SetText(k == 1 and ("|cff999999" .. L.PROF_FEED_NONE .. "|r") or "")
 		end
 	end
+end
+
+------------------------------------------------------------------------
+-- 1.0.2 M3: the guild list answer (names shown here only: never saved, sent or whispered; tos)
+------------------------------------------------------------------------
+local GL_ROWS = 12
+function GH:ShowGuildListResult(q, names)
+	local p = self.guildListPopup
+	if not p then
+		p = W.Popup("GuildHubGuildList", self.mainFrame or UIParent, 0.97)
+		p:SetSize(380, 96 + GL_ROWS * 18)
+		p:SetFrameStrata("DIALOG")
+		p:EnableMouse(true)
+		p.title = W.Text(p, "GameFontNormal")
+		p.title:SetPoint("TOPLEFT", 12, -12)
+		p.title:SetWidth(330)
+		p.close = W.TitleButton(p, "close", 24)
+		p.close:SetPoint("TOPRIGHT", -2, -2)
+		p.close:SetScript("OnClick", function() p.names = nil; p:Hide() end)
+		p.rows = {}
+		for i = 1, GL_ROWS do
+			local r = CreateFrame("Frame", nil, p)
+			r:SetSize(350, 18)
+			r:SetPoint("TOPLEFT", 14, -34 - (i - 1) * 18)
+			r.name = W.Text(r, "GameFontHighlight")
+			r.name:SetPoint("LEFT", 0, 0)
+			r.name:SetWidth(150)
+			r.state = W.Text(r, "GameFontHighlightSmall")
+			r.state:SetPoint("LEFT", 156, 0)
+			r.state:SetWidth(80)
+			r.hub = W.Text(r, "GameFontDisableSmall")
+			r.hub:SetPoint("LEFT", 240, 0)
+			r.hub:SetWidth(110)
+			p.rows[i] = r
+		end
+		p.note = W.Text(p, "GameFontDisableSmall")
+		p.note:SetPoint("BOTTOMLEFT", 12, 10)
+		p.note:SetWidth(356)
+		p.note:SetWordWrap(true)
+		p:HookScript("OnHide", function() p.names = nil end) -- the names are dropped with the popup
+		tinsert(UISpecialFrames, "GuildHubGuildList")
+		self.guildListPopup = p
+	end
+	p.names = names
+	p.title:SetText(L.GL_TITLE:format(q.rname or "?"))
+	for i, r in ipairs(p.rows) do
+		local n = names[i]
+		r:SetShown(n ~= nil or (i == 1 and #names == 0))
+		if n then
+			r.name:SetText(U.ClassColored(n.name, n.class))
+			r.state:SetText(n.online and L.GL_ONLINE or L.GL_OFFLINE)
+			if n.online then r.state:SetTextColor(0.4, 0.9, 0.4) else r.state:SetTextColor(0.6, 0.6, 0.6) end
+			r.hub:SetText(n.hub and "" or L.GL_NOHUB)
+		elseif i == 1 then
+			r.name:SetText(L.GL_NOBODY)
+			r.state:SetText("")
+			r.hub:SetText("")
+		end
+	end
+	p.note:SetText(L.GL_NOTE .. (#names > GL_ROWS and ("  " .. L.TIP_MORE:format(#names - GL_ROWS)) or ""))
+	p:ClearAllPoints()
+	local a = self.guildListAnchor
+	if a and a.IsShown and a:IsShown() then p:SetPoint("TOPRIGHT", a, "BOTTOMRIGHT", 0, -4) else p:SetPoint("CENTER") end
+	p:Show()
+	if self.DrawProfRows then self:DrawProfRows() end
 end

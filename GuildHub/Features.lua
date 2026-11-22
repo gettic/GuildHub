@@ -452,7 +452,8 @@ function GH:ReadBundle(name, fields, whole, relayed)
 	for field, v in pairs(fields) do
 		local def = type(field) == "string" and defs[field]
 		if def then
-			local clean = (v == false) and nil or (def.clean and def.clean(v))
+			local clean -- false = the owner cleared the field (X7 scan: "x and nil or y" never gives nil)
+			if v ~= false and def.clean then clean = def.clean(v) end
 			b[field] = clean
 			if def.store then pcall(def.store, name, clean) end
 		end

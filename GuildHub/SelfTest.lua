@@ -968,6 +968,7 @@ function ST.BoardsParts()
         { name = "brd.footer", obj = t.footer, opt = true, shownOnly = true },
         { name = "brd.locked", obj = t.locked, opt = true, shownOnly = true },
         { name = "brd.logStrip", obj = t.logStrip, opt = true, shownOnly = true },
+        { name = "brd.checkEnch", obj = t.checkEnch, opt = true, shownOnly = true }, -- 1.0.2 officers
     }
     if view == "tonight" then
         local f = t.tonight or {}
@@ -1024,7 +1025,37 @@ local function StepBoards()
     end
     GH.db.profile.raidView = run.state.prevRaidView or "ready"
     GH:DrawBoardsTab()
+    if GH.ShowGearPanel and GH:FeatureOn("gear") then
+        -- 1.0.2: your own gear panel (read live, nothing asked or sent), then the settings tree
+        GH:ShowGearPanel(GH:MyName())
+        return Later(1, function()
+            local list = {}
+            for name, obj in pairs(GH:GearPanelParts()) do list[#list + 1] = { name = name, obj = obj, opt = name:find("slot") ~= nil } end
+            table.sort(list, function(a, b) return a.name < b.name end)
+            CheckGroup(list, GH.gearPanel)
+            Count()
+            if (GH.blobStats.asked or 0) ~= (run.state.blobAsked or 0) then Problem("GEAR", "asked", "your own panel sent a request") end
+            GH:HideGearPanel()
+            ST.CheckSettingsTree()
+            NextMembers()
+        end)
+    end
     NextMembers()
+end
+
+-- 1.0.2: the Settings tree: 9 groups, every older option key still there (saved settings unchanged).
+function ST.CheckSettingsTree()
+    if not (GH.FlatOptions and GH.OPTION_GROUPS) then return end
+    Count()
+    local ok, flat = pcall(GH.FlatOptions, GH)
+    if not ok or type(flat) ~= "table" then return Problem("OPT", "tree", "options table did not build") end
+    for _, key in ipairs({ "debug", "autoActivity", "alertLfg", "profTooltip", "recipeLearnLine", "mapMinimap", "raidRole",
+        "shareGroup", "shareProf", "gearShare", "gearMarks", "gearTooltip", "officerRank", "minimapHide" }) do
+        if not flat[key] then Problem("OPT", key, "missing from the settings tree") end
+    end
+    local n = 0
+    for _ in pairs(flat) do n = n + 1 end
+    Info(("settings tree groups=%d options=%d"):format(#GH.OPTION_GROUPS, n))
 end
 
 local function NextBoards()
@@ -1033,6 +1064,7 @@ local function NextBoards()
         run.state.prevTab = run.state.prevTab or GH.mainFrame.currentTab
         run.state.prevRaidView = GH.db.profile.raidView
         run.state.boardStep = 1
+        run.state.blobAsked = GH.blobStats and GH.blobStats.asked or 0
         GH:ShowTab("boards")
         GH.db.profile.raidView = BOARD_STEPS[1]
         GH:DrawBoardsTab()

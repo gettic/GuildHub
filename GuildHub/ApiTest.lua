@@ -622,6 +622,57 @@ Check("rez", function()
 	local d = okD == true and (type(dead) == "boolean" and "p" or "?") or okD
 	return Valid("PLAYER_ALIVE") .. Valid("PLAYER_UNGHOST") .. "," .. d
 end)
+-- 1.0.2 gearx: own GetInventoryItemLink per slot plain/secret, slots with an enchant, a link rebuilt from
+-- numbers (C_Item.GetItemInfo on an item string) y/n. Own character only; nothing sent.
+Check("gearx", function()
+	if type(GetInventoryItemLink) ~= "function" then return "-" end
+	local plain, secret, ench, firstID = 0, 0, 0, nil
+	for slot = 1, 19 do
+		local ok, link = pcall(GetInventoryItemLink, "player", slot)
+		if ok and link ~= nil then
+			if Secret(link) then secret = secret + 1
+			else
+				plain = plain + 1
+				local id, e
+				if GH.ParseItemLink then id, e = GH.ParseItemLink(link) end
+				if id then firstID = firstID or id; if (e or 0) > 0 then ench = ench + 1 end end
+			end
+		end
+	end
+	local rebuilt = "n"
+	if firstID then
+		local get = C_Item and C_Item.GetItemInfo or GetItemInfo
+		local ok, _, link = pcall(get, ("item:%d:0:0:0:0:0:0"):format(firstID))
+		rebuilt = (ok and type(link) == "string" and not Secret(link)) and "y" or "n"
+	end
+	return ("%d:%d,e%d,%s"):format(plain, secret, ench, rebuilt)
+end)
+-- recitem: the first recipe item in the bags: is the "Requires <profession> (<skill>)" line readable
+-- through the tooltip data? (C_TooltipInfo.GetBagItem; the item is never used, picked up or moved;
+-- no item name in the line)
+Check("recitem", function()
+	local C = C_Container
+	local TI = C_TooltipInfo
+	if not (C and C.GetContainerNumSlots and C.GetContainerItemID and TI and TI.GetBagItem) then return "-" end
+	local getI = C_Item and C_Item.GetItemInfoInstant or GetItemInfoInstant
+	for bag = 0, 4 do
+		local okN, n = pcall(C.GetContainerNumSlots, bag)
+		for slot = 1, (okN and type(n) == "number" and not Secret(n)) and n or 0 do
+			local okI, id = pcall(C.GetContainerItemID, bag, slot)
+			if okI and type(id) == "number" and not Secret(id) then
+				local okC, _, _, _, _, _, classID = pcall(getI, id)
+				if okC and classID == 9 then
+					local okT, data = pcall(TI.GetBagItem, bag, slot)
+					if not okT or type(data) ~= "table" then return "found,tip!" end
+					local line, need
+					if GH.RecipeRequirement then line, need = GH:RecipeRequirement(data.lines) end
+					return line and ("found,req=y:" .. tostring(need)) or "found,req=n"
+				end
+			end
+		end
+	end
+	return "none"
+end)
 GH.API_CHECKS = checks
 
 -- Guild calendar events in the next 14 days (after OpenCalendar has loaded the data).

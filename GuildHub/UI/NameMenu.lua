@@ -17,7 +17,7 @@ local _, ns = ...
 local GH, L, U = ns.GH, ns.L, ns.Util
 local W = ns.Widgets
 
-local MAX_TOP = 9 -- top entries before the officer section (plan sec. 1: "at most about 8"; 9 with "I can help")
+local MAX_TOP = 10 -- top entries before the officer section (plan sec. 1: "at most about 8"; 9 with "I can help"; 10 with View gear, 1.0.2)
 GH.NAME_MENU_MAX_TOP = MAX_TOP
 GH.nameMenuStats = { opened = 0, fallback = 0, clicks = 0 }
 
@@ -109,6 +109,8 @@ function GH:NameMenuEntries(name, ctx)
 	end
 	local ok, why, s = self:ShowOnMapState(name)
 	e[#e + 1] = Btn("showmap", L.MENU_SHOWMAP, ok, why, s, function() GH:ShowOnMap(name) end)
+	-- 1.0.2: "top" hooks (View gear) right after Show on map, also on your own characters
+	for _, h in ipairs(HookEntries(self, "top", name, ctx)) do e[#e + 1] = h end
 	if not mine then
 		ok, why, s = self:JoinMeState(name)
 		e[#e + 1] = Btn("joinme", L.MENU_JOINME, ok, why, s, function() GH:JoinMe(name) end)

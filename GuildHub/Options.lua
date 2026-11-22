@@ -204,12 +204,129 @@ local function AddRaidOptions(args)
 	}
 end
 
+-- 1.0.2 Gear group (Features\Gear.lua): the same share switch as in What I share, the marks, the hover line.
+local function AddGearOptions(args)
+	if not GH.features.gear then return end
+	local off = function() return not GH:FeatureOn("gear") end
+	args.gearInfo = {
+		type = "description", order = 1,
+		name = function()
+			GH.db.profile.gearNewSeen = true -- the NEW tag on the tree entry goes once the group was opened
+			return L.OPT_GEAR_INFO
+		end,
+	}
+	args.gearShare = {
+		type = "toggle", order = 2, width = "full",
+		name = L.OPT_SHAREGEAR, desc = L.OPT_SHAREGEAR_DESC,
+		get = function() return GH:Shares("gear") end,
+		set = function(_, v) GH:SetShare("gear", v) end,
+		disabled = function() return GH.cannotSend or off() end,
+	}
+	args.gearMarks = {
+		type = "toggle", order = 3, width = "full",
+		name = L.OPT_GEAR_MARKS, desc = L.OPT_GEAR_MARKS_DESC,
+		get = function() return GH.db.profile.gearMarks ~= false end,
+		set = function(_, v)
+			GH.db.profile.gearMarks = v and true or false
+			if GH.RefreshGearPanel then GH:RefreshGearPanel() end
+		end,
+		disabled = off,
+	}
+	args.gearTooltip = {
+		type = "toggle", order = 4, width = "full",
+		name = L.OPT_GEAR_HOVER, desc = L.OPT_GEAR_HOVER_DESC,
+		get = function() return GH.db.profile.gearTooltip ~= false end,
+		set = function(_, v) GH.db.profile.gearTooltip = v and true or false end,
+		disabled = off,
+	}
+end
+
+-- 1.0.2 settings tree (D8): the same options (same keys, same saved values), sorted into 9 groups.
+-- Keys not listed stay on top (intro, Getting started, minimap button) or go to Features.
+local TOP_KEYS = { intro = true, guide = true, minimapHide = true }
+local GROUP_OF = {
+	shareInfo = "share",
+	autoActivity = "board", autoActivityInfo = "board", alertLfg = "board", alertHelp = "board", toastBudget = "board",
+	pauseAlerts = "board", muted = "board", mutedNone = "board", showNoAddon = "board",
+	profTooltip = "prof", recipeLearnLine = "prof",
+	mapMinimap = "map", mapHideAfk = "map", mapFindLines = "map",
+	raidRole = "raid", raidRez = "raid", raidNewIn = "features",
+	recruitToasts = "recruit", recruitSpot = "recruit",
+	debug = "debug",
+}
+local DROP = { shareHeader = true, boardHeader = true, profHeader = true, mapHeader = true, raidHeader = true, featHeader = true }
+local GROUPS = {
+	{ key = "share", name = "OPT_GRP_SHARE" }, { key = "board", name = "OPT_GRP_BOARD" }, { key = "prof", name = "OPT_GRP_PROF" },
+	{ key = "map", name = "OPT_GRP_MAP" }, { key = "raid", name = "OPT_GRP_RAID" }, { key = "gear", name = "OPT_GRP_GEAR" },
+	{ key = "recruit", name = "OPT_GRP_RECRUIT" }, { key = "features", name = "OPT_GRP_FEATURES" }, { key = "debug", name = "OPT_GRP_DEBUG" },
+}
+GH.OPTION_GROUPS = GROUPS
+
+local function GroupFor(key)
+	if GROUP_OF[key] then return GROUP_OF[key] end
+	for _, k in ipairs(GH.shareOrder or {}) do
+		local s = GH.shareItems[k]
+		if (s.optKey or ("share_" .. k)) == key then return "share" end
+	end
+	if key:find("^raidField_") then return "raid" end
+	return "features"
+end
+
+local function Treeify(t)
+	local flat = t.args
+	local args, groups = {}, {}
+	for i, g in ipairs(GROUPS) do
+		local grp = { type = "group", order = 10 + i, name = L[g.name] or g.key, args = {} }
+		if g.key == "gear" then
+			grp.name = function()
+				return L.OPT_GRP_GEAR .. ((GH.db and GH.db.profile.gearNewSeen) and "" or (" " .. L.OPT_NEW_TAG))
+			end
+			grp.hidden = function() return not GH.features.gear end
+		end
+		groups[g.key] = grp
+		args["grp_" .. g.key] = grp
+	end
+	for key, a in pairs(flat) do
+		if TOP_KEYS[key] then
+			args[key] = a
+		elseif not DROP[key] then
+			groups[GroupFor(key)].args[key] = a
+		end
+	end
+	AddGearOptions(groups.gear.args)
+	if args.minimapHide then args.minimapHide.order, args.minimapHide.width = 1.6, "double" end
+	t.args = args
+	t.childGroups = "tree"
+	return t
+end
+
 local function BuildOptions()
 	local t = BuildOptionsBase()
 	AddShareOptions(t.args)
 	AddRaidOptions(t.args)
 	AddFeatureOptions(t.args)
-	return t
+	-- the Professions group's A3 line (Features\Crafters.lua)
+	t.args.recipeLearnLine = {
+		type = "toggle", order = 19.51, width = "full",
+		name = L.OPT_LEARNLINE, desc = L.OPT_LEARNLINE_DESC,
+		get = function() return GH.db.profile.recipeLearnLine ~= false end,
+		set = function(_, v) GH.db.profile.recipeLearnLine = v and true or false end,
+		disabled = function() return not GH:FeatureOn("prof") end,
+	}
+	return Treeify(t)
+end
+
+-- Every option by its key, wherever the tree put it (tests, self-test).
+function GH:FlatOptions(t)
+	t = t or BuildOptions()
+	local out = {}
+	local function walk(args)
+		for k, a in pairs(args or {}) do
+			if type(a) == "table" and a.type == "group" then walk(a.args) else out[k] = a end
+		end
+	end
+	walk(t.args)
+	return out
 end
 
 BuildOptionsBase = function()

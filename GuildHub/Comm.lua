@@ -257,6 +257,7 @@ function GH:OnSendFailed(info)
 	end
 	self:Debug("|cffff6060%s was NOT sent: %s|r", info.mtype, why)
 	if self.OnProfSendFailed then self:OnProfSendFailed(info) end -- recipe lists back off
+	if self.OnBlobSendFailed then self:OnBlobSendFailed(info) end -- BLOB requests / answers (Blob.lua)
 end
 
 function GH:SendHeld(key)
@@ -417,6 +418,8 @@ function GH:SelfInfo()
 		-- 0.4.0-b2: "my map dot is still where it was" (Features\Map.lua); only through the same gate
 		-- as POS itself (after the yes, out in the world, no lockdown)
 		ps = (self.PosSharingNow and self:PosSharingNow()) and 1 or nil,
+		-- 1.0.2: gear (Features\Gear.lua): 1 = not shared, 2 = shared; older clients ignore it
+		gr = self.GearCap and self:GearCap() or nil,
 	}
 	-- the bundle record (Features.lua): whole if HB still fits one piece, else only its hash.
 	-- Older clients ignore both fields.
@@ -438,6 +441,10 @@ function GH:ReadSelfInfo(sender, data)
 	if u then
 		u.inst = data.inst == true
 		u.grp = self:CleanGroup(data) -- nil from v0.1.2 clients or when they don't share it
+		-- 1.0.2 gear: 1 / 2, or false = an older Guild Hub without gear (never asked)
+		u.gr = (data.gr == 1 or data.gr == 2) and data.gr or false
+		-- gear sharing off: their saved copy is removed at once, so it doesn't show again once they log out
+		if u.gr == 1 and self.DropGearCopy then self:DropGearCopy(sender) end
 	end
 	local rec = self:CleanRecord({
 		ts = data.ts, class = data.class, level = data.level, version = data.v, lastSeen = U.Now(),

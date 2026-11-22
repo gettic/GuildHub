@@ -705,10 +705,11 @@ function GH:ProfRosterCheck(roster)
 	for name, m in pairs(gdb.members) do
 		if roster[name] then
 			m.profGone = nil
-		elseif m.prof or m.profGone then
+		elseif m.prof or m.gear or m.profGone then
 			m.profGone = m.profGone or now
 			if now - m.profGone >= GONE_SECONDS then
 				m.prof = nil
+				m.gear = nil -- 1.0.2: a saved gear copy goes with them too (privacy)
 				gone[name] = true
 			end
 		end
@@ -944,15 +945,22 @@ function GH:InitProfTooltip()
 	if not (TDP and TDP.AddTooltipPostCall and kind) then return end
 	self.profTooltipHooked = true
 	TDP.AddTooltipPostCall(kind, function(tt, data)
-		if not GH.db.profile.profTooltip or InCombatLockdown() or not GH.profStarted then return end
+		if InCombatLockdown() or not GH.profStarted then return end
 		if type(tt) ~= "table" or not tt.AddLine or type(data) ~= "table" then return end
-		local ok, line = pcall(function()
-			local id = data.id
-			if type(id) ~= "number" or U.IsSecret(id) then return nil end
-			local name = (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id))
-			return GH:TooltipCrafters(name)
-		end)
-		if ok and line then tt:AddLine(line, 0.55, 0.8, 1) end
+		if GH.db.profile.profTooltip then
+			local ok, line = pcall(function()
+				local id = data.id
+				if type(id) ~= "number" or U.IsSecret(id) then return nil end
+				local name = (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id))
+				return GH:TooltipCrafters(name)
+			end)
+			if ok and line then tt:AddLine(line, 0.55, 0.8, 1) end
+		end
+		-- 1.0.2 A3 "Could learn this" on recipe items (Features\Crafters.lua; own setting, cached data only)
+		if GH.LearnTooltipLine and GH.db.profile.recipeLearnLine ~= false then
+			local ok, line = pcall(GH.LearnTooltipLine, GH, data)
+			if ok and line then tt:AddLine(line, 0.55, 0.8, 1) end
+		end
 	end)
 end
 

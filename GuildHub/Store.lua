@@ -171,6 +171,10 @@ function GH:RepairSaved()
 	if self.RepairRaidSaved then
 		for _, name in ipairs(self:RepairRaidSaved(db)) do fixed[#fixed + 1] = name end
 	end
+	-- 1.0.2 gear keys (Features\Gear.lua): a non-boolean switch goes back to its default
+	if self.RepairGearSaved then
+		for _, name in ipairs(self:RepairGearSaved(db)) do fixed[#fixed + 1] = name end
+	end
 	for _, name in ipairs(fixed) do
 		self:Debug("repaired saved setting %s", name)
 	end

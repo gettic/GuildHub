@@ -58,7 +58,7 @@ COLS.role = { key = "role", label = L.RAID_COL_ROLE, w = 50, fill = function(c, 
 	sort = function(r) return r.role end }
 COLS.lvl = { key = "level", label = L.RAID_COL_LVL, w = 36, align = "CENTER",
 	fill = function(c, r) W.CellText(c, r.level and tostring(r.level) or "?") end, sort = function(r) return r.level end }
-COLS.attune = { key = "attune", label = L.RAID_COL_ATTUNE, w = 180, field = "at",
+COLS.attune = { key = "attune", label = L.RAID_COL_ATTUNE, w = 142, field = "at",
 	fill = function(c, r)
 		if not r.attune then return NotShared(c, r) end
 		if r.attune == "done" then W.CellText(c, "|T" .. W.ART.raidDone .. ":12:12|t " .. L.RAID_ATT_DONE, GREEN)
@@ -75,7 +75,7 @@ COLS.dura = { key = "durability", label = L.RAID_COL_DURA, w = 86, align = "CENT
 		W.CellText(c, r.du .. " %", GH:DurabilityColor(r.du))
 	end,
 	sort = function(r) return r.du end }
-COLS.reag = { key = "reagents", label = L.RAID_COL_REAG, w = 150, field = "rg",
+COLS.reag = { key = "reagents", label = L.RAID_COL_REAG, w = 122, field = "rg",
 	fill = function(c, r)
 		if r.rg == nil then return NotShared(c, r) end
 		if r.rg < 0 then return W.CellText(c, L.RAID_REAG_NONE, GREY) end
@@ -90,9 +90,26 @@ COLS.resist = { key = "resist", label = L.RAID_COL_RESIST, w = 60, align = "CENT
 		W.CellText(c, tostring(r.res.total))
 	end,
 	sort = function(r) return r.res and r.res.total end }
-COLS.zone = { key = "zone", label = L.RAID_COL_ZONE, w = 118,
+COLS.zone = { key = "zone", label = L.RAID_COL_ZONE, w = 94,
 	fill = function(c, r) W.CellText(c, r.zone or "", { 0.8, 0.8, 0.8 }) end,
 	sort = function(r) return r.zone end }
+
+-- 1.0.2 Enchants (Features\Gear.lua): only from gear copies we already have; the view never asks anyone.
+-- "2 missing" (orange) / a small tick = every checked slot enchanted / "-" no copy / "not shared".
+COLS.ench = { key = "ench", label = L.RAID_COL_ENCH, w = 90, align = "CENTER",
+	fill = function(c, r)
+		if r.state ~= "addon" then return NotShared(c, r) end
+		local kind, n = GH:GearEnchantInfo(r.name)
+		if kind == "missing" then W.CellText(c, L.RAID_ENCH_MISSING:format(n), ORANGE)
+		elseif kind == "ok" then W.CellText(c, "|T" .. W.ART.raidDone .. ":12:12|t", GREEN)
+		elseif kind == "notshared" then W.CellText(c, L.RAID_NOTSHARED, GREY)
+		else W.CellText(c, "-", GREY) end
+	end,
+	sort = function(r)
+		local kind, n = GH:GearEnchantInfo(r.name)
+		if kind == "missing" then return n elseif kind == "ok" then return 0 end
+		return nil
+	end }
 
 local SCHOOLS = { "fire", "nature", "frost", "shadow", "arcane" }
 for i, s in ipairs(SCHOOLS) do
@@ -133,6 +150,8 @@ function GH:RaidColumns(view)
 	local cols
 	if view == "ready" then
 		cols = { COLS.name, COLS.role, COLS.lvl, COLS.attune, COLS.dura, COLS.reag, COLS.resist, COLS.zone }
+		-- 1.0.2: Enchants after Reagents, while gear is on and you share it (fair trade)
+		if self:FeatureOn("gear") and self:CanUse("gear") then table.insert(cols, 7, COLS.ench) end
 	elseif view == "lockouts" then
 		cols = { COLS.name, COLS.role, COLS.lvl }
 		for _, raid in ipairs(self.RAIDS) do
@@ -404,6 +423,41 @@ local function BuildRaidPage(tab, page)
 	tab.footer = W.Text(page, "GameFontHighlightSmall")
 	tab.footer:SetPoint("BOTTOMLEFT", X0 + 6, 8)
 	tab.footer:SetWidth(CONTENT_W - 10)
+	-- 1.0.2 officers: Check enchants (one click = one run; Stop ends it at once; Features\Gear.lua)
+	local ce = Btn(page, L.RAID_CHECK_ENCH, 150, function()
+		local c = GH.gearCheck
+		if c and c.running then GH:CheckEnchantsStop("stopped") else GH:CheckEnchantsStart() end
+		GH:DrawBoardsTab(true)
+	end)
+	ce:SetPoint("BOTTOMRIGHT", -4, 2)
+	ce:SetScript("OnEnter", function(s)
+		GameTooltip:SetOwner(s, "ANCHOR_TOP")
+		GameTooltip:AddLine(L.RAID_CHECK_ENCH_TIP, 1, 1, 1, true)
+		local ok, why, secs = GH:CheckEnchantsState()
+		if not ok and why ~= "running" then
+			GameTooltip:AddLine((L.RAID_CHECK_WHY[why] or why or ""):format(secs and U.Duration(secs) or ""), 1, 0.4, 0.3, true)
+		end
+		GameTooltip:Show()
+	end)
+	ce:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	ce:Hide()
+	tab.checkEnch = ce
+end
+
+local function DrawCheckEnch(gh, tab, view, locked)
+	local ce = tab.checkEnch
+	local show = view == "ready" and not locked and gh:FeatureOn("gear") and gh.rosterReady and gh:IsOfficer(gh:MyName())
+	ce:SetShown(show and true or false)
+	tab.footer:SetWidth(CONTENT_W - 10 - (show and 160 or 0))
+	if not show then return end
+	local i, n, running = gh:CheckEnchantsProgress()
+	if running then
+		ce:SetLabel(L.RAID_CHECK_STOP:format(i or 0, n or 0))
+		Enable(ce, true)
+	else
+		ce:SetLabel(L.RAID_CHECK_ENCH)
+		Enable(ce, gh:CheckEnchantsState())
+	end
 end
 
 local function BuildTonight(tab, page)
@@ -694,6 +748,7 @@ function GH:DrawBoardsTab(keepPlace)
 	DrawToolbar(self, tab, view)
 	local on = self:FeatureOn("raid")
 	local locked = LOCKED_VIEWS[view] and not self:CanUse("raid")
+	DrawCheckEnch(self, tab, view, locked)
 	tab.locked:SetShown(locked)
 	if locked then tab.locked.text:SetText(self:LockedText("raid", L.RAID_LOCKED)) end
 	local tn = view == "tonight"
