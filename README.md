@@ -37,10 +37,12 @@ The Recruiting page only shows when the Guild Recruiter is on. On Trial and Vete
 - Slash shortcuts, key bindings and a quick menu on the minimap button.
 - A short Getting started walkthrough.
 - A Guild Recruiter (beta): a Recruiting tab with what the guild needs, the guild makeup, the guild's ad to post or copy, and lists for officers.
+- A Boards tab with a Raid board: who is ready for a raid, lockouts, resistances, the raid makeup and tonight's raid.
+- A "Need a rez" status, with calm notes for healers.
 
 ## Status board
 
-Type `/ghub` or click the Guild Hub minimap button to open it. It lists every online guildmate with rank, level, zone, what they are doing. How long they have had that status shows in grey at the right end of the STATUS column (for example "12 min"). Hover a row to see when it clears, such as "for 45 min · clears in 15 min". Each row has Whisper and Invite buttons (on a Need-help row, Whisper becomes "I can help", see [My status](#my-status)). Click the Sort menu to sort by activity, level, zone, rank or name. Tick "LFG only" to list only guildmates looking for a group. Search by name, zone, status or rank; press Esc in the search box to clear it. Guildmates without Guild Hub show greyed out. An empty list says why: still loading, no match for the search, "LFG only" is on, or nobody online has Guild Hub. The window uses Blizzard's own look. The tabs (Status, Professions, Map, Recruiting) sit in a row on top; hover one for a one-line tip. Under the title, "N online · N with Guild Hub" shows on every tab except Settings. Each page has its own strip above its list: on the Status page it holds Search, Sort and "LFG only". The list shows 16 rows. Settings is the gear button in the title bar. Right-click a name for the [name menu](#name-menu).
+Type `/ghub` or click the Guild Hub minimap button to open it. It lists every online guildmate with rank, level, zone, what they are doing. How long they have had that status shows in grey at the right end of the STATUS column (for example "12 min"). Hover a row to see when it clears, such as "for 45 min · clears in 15 min". Each row has Whisper and Invite buttons (on a Need-help row, Whisper becomes "I can help", see [My status](#my-status)). Click the Sort menu to sort by activity, level, zone, rank or name. Tick "LFG only" to list only guildmates looking for a group. Search by name, zone, status or rank; press Esc in the search box to clear it. Guildmates without Guild Hub show greyed out. An empty list says why: still loading, no match for the search, "LFG only" is on, or nobody online has Guild Hub. The window uses Blizzard's own look. The tabs (Status, Professions, Map, Recruiting, Boards) sit in a row on top; hover one for a one-line tip. Under the title, "N online · N with Guild Hub" shows on every tab except Settings. Each page has its own strip above its list: on the Status page it holds Search, Sort and "LFG only". The list shows 16 rows. Settings is the gear button in the title bar. Right-click a name for the [name menu](#name-menu).
 
 **Group column.** GROUP shows who is in a group. Green "Yours" means they are in your group (works for everyone, also without Guild Hub). "3/5" is a party of 3, "R 18" a raid of 18, "-" is no group. Empty means they have an older Guild Hub. Invite is greyed out for players already in your group. Only the number is shared, never names. To share nothing about your group, turn off "Share my group size" in the settings.
 
@@ -76,7 +78,7 @@ The "My status" panel sits on the right of the Status page. At the top it shows 
 
 | Part | What it does |
 |---|---|
-| Status | No status, LFG, Need help, Farming, Leveling, Busy or Open to chat |
+| Status | No status, LFG, Need help, Farming, Leveling, Busy, Open to chat or Need a rez (only while dead, see below) |
 | Dungeon | Shows for LFG: pick the dungeon or raid |
 | Note box | A short note of up to 60 letters |
 | Lasts | 1, 2, 4 or 8 hours |
@@ -96,6 +98,8 @@ A new status lasts 1 hour. Changing the note or the dungeon keeps the time. Choo
 **LFG match.** When other online guildmates want the same dungeon as you, a gold line says so, for example "2 others want Scholomance". Click it to see who, with their level and note, and an Invite button for each. One click sends one invite. Right-click a name for the [name menu](#name-menu). Muted and ignored players are left out.
 
 **I can help.** On a Need-help row, the Whisper button becomes "I can help". It is also on the Need-help note and in the name menu. It fills a whisper that quotes their note ("I can help: ..."). Nothing is sent until you press Enter. Once per person per minute.
+
+**Need a rez.** This status can only be set while you are dead. It clears itself when you are alive again, or after 10 minutes. Healers (priest, paladin, shaman, druid) who tick "Rez available" in My status get one small note per dead guildmate, with the zone. It never pops up in combat. Guild Hub never accepts a resurrection or casts anything for you.
 
 ## Name menu
 
@@ -143,7 +147,7 @@ Guildmates who share their position show as class-coloured dots on the world map
 
 The tab only shows who is online now. It saves and sends nothing. It is hidden while the Guild map feature is off.
 
-**Hover card.** Hover a dot to see a card with the name, level, class, rank, zone, status, group size, professions and how long ago the position was sent. If other dots sit right next to it, an "Also here" line names them. Group size and professions show only if you share those yourself (see [Fair trade](#fair-trade)). No card in combat.
+**Hover card.** Hover a dot to see a card with the name, level, class, rank, zone, status, group size, professions and how long ago the position was sent. If other dots sit right next to it, an "Also here" line names them. Group size and professions show only if you share those yourself (see [Fair trade](#fair-trade)). It also shows where their hearthstone is set, if they share that and you share yours. That is off if you answered "No" to sharing your position, until you switch it on in Settings. No card in combat.
 
 **Dungeon labels.** On the world map, dungeon entrances show how many online guildmates are inside, for example "The Deadmines 2". Blackrock Mountain has one combined label, such as "Blackrock Mountain: BRD 2 · LBRS 5". Only numbers show, never names. The counts come from the guild list and from statuses, and nothing is sent for them.
 
@@ -209,6 +213,26 @@ For about 20 seconds after login (or after leaving a dungeon) you see "checking 
 
 **New members page (buddies).** Everyone can tick "I'll be a buddy for new members" (it lasts 90 days; click again to stop). A buddy sees the new guildmates they were asked to help, and when each was last online. Officers see everyone who joined in the last 14 days with when they were last online. Those not online for 4 days or more ("gone quiet") come first. Officers pick a buddy for each with one click. A pairing ends after 14 days. Only the two of them and officers see it. These are reminders only: no scores, and the "gone quiet" list is worked out on your computer and not sent.
 
+## Boards
+
+Click the Boards tab for the Raid board. A "View" menu switches between five views. Click a column title to sort by it; click again to reverse.
+
+| View | What it shows |
+|---|---|
+| Ready | Per guildmate: role, Onyxia attunement step, lowest durability, reagents and resistances |
+| Lockouts | Raid lockouts per raid, with reset times |
+| Resistances | Resistances per guildmate |
+| Makeup | Classes by role for level 60 (or 50+), with a recruiting hint |
+| Tonight | The next guild event, see below |
+
+For offline guildmates you see their role, attunement and lockouts. The list can be searched, limited to level 60s, and can hide offline guildmates.
+
+**What is shared.** Only what Guild Hub users switch on. With "Raid info" off you don't see others' raid info either (see [Fair trade](#fair-trade)). Makeup and Tonight stay open: Makeup only uses the guild list. In Settings you pick your raid role (at most 2), and you can switch single fields off (attunement, lockouts, resistances, durability, reagents). The Features section can switch the whole Boards tab off.
+
+**Tonight.** Shows the next guild event from the game calendar, with Sign up, Tentative and Decline buttons (one click, one answer). It also shows sign-up counts by role. These are read from the calendar when you open the view or press Refresh, at most every 10 seconds. While you are in a raid, a summon queue lists who isn't at the raid yet (warlocks first). You can tick "Need a summon", "I can click the portal" and "Late 15 min" on My status. These end by themselves after 6 hours, or when you leave the raid.
+
+**Combat log.** Inside a raid, a reminder with a "Start logging" button shows, only if the game allows it. One click starts the log. It never starts by itself.
+
 ## Fair trade
 
 What you don't share, you can't see from others either:
@@ -218,6 +242,7 @@ What you don't share, you can't see from others either:
 | Your position | The map dots (zone counts stay) |
 | Your professions | The Professions tab is locked, with a button to share |
 | Your group size | The GROUP column shows "-" |
+| Your raid info | The Ready, Lockouts and Resistances views are locked |
 
 Trial and Veteran accounts can't share, so these parts are locked for them. The status board stays open to everyone. Settings > What I share lists each item.
 
@@ -261,9 +286,9 @@ Under Esc > Key Bindings > AddOns > Guild Hub you can set keys for "Open / close
 
 ## Settings
 
-Click the gear button in the title bar of the `/ghub` window (left of the "-"), or use `/ghub options` or "Settings" in the minimap button's quick menu. Click the gear again to go back to Status. The same settings are in Esc > Options > AddOns > Guild Hub. There you can switch off automatic activity, the "crafted by" tooltip line and the notes, set the quiet limit for notes, pause notes for 1 hour, unmute players, show or hide guildmates without Guild Hub, hide the minimap button, and turn the guild dots on the minimap on or off. The "Getting started" button opens the Getting started walkthrough. The Guild Master sets which ranks count as officers.
+Click the gear button in the title bar of the `/ghub` window (left of the "-"), or use `/ghub options` or "Settings" in the minimap button's quick menu. Click the gear again to go back to Status. The same settings are in Esc > Options > AddOns > Guild Hub. There you can switch off automatic activity, the "crafted by" tooltip line and the notes, set the quiet limit for notes, pause notes for 1 hour, unmute players, show or hide guildmates without Guild Hub, hide the minimap button, and turn the guild dots on the minimap on or off. The "Getting started" button opens the Getting started walkthrough. Raid settings (role, raid fields, "Rez available") are there too, and a switch for the "New in" note: a small card shown once after an update (never in combat or in an instance). The Guild Master sets which ranks count as officers.
 
-**What I share.** This is at the top of Settings. It has one line each for your position, your professions and your group size. Each line says "off = you also can't see others'" (see Fair trade). Trial and Veteran accounts can't share, so these lines are locked for them.
+**What I share.** This is at the top of Settings. It has one line each for your position, your professions, your group size, your raid info and your hearthstone location. Each line says "off = you also can't see others'" (see Fair trade). Trial and Veteran accounts can't share, so these lines are locked for them.
 
 **Features.** The Features section lets you switch Professions, the Guild map and the Guild Recruiter on or off for yourself, and turn "Keep guild history on this computer" on or off (on by default). Officers can also switch a part off for the whole guild. They can only switch things off, never on, and the switch stops counting if they lose their officer rank.
 
@@ -284,6 +309,7 @@ Settings shows what is kept and has a "Clear guild history" button. Later versio
 - Data of members not seen for 90 days is deleted.
 - Works with WoW Forever character names such as "Mira Ashford".
 - Guildmates who use Guild Hub show as such within a few seconds after you log in.
+- Logins stay light: the login sync doesn't carry the raid info of guildmates who are online, because they send their own. If you relog in a raid, the group's info comes in within seconds. Others' raid info follows over the next few minutes.
 - On narrow screens or with a large UI scale, the window shrinks to fit.
 - A damaged settings file no longer causes an error: bad settings go back to their defaults and your guild data is kept.
 - All addon messages share one budget that stays inside the game's limit, so big guild logins don't get guild messages refused.
@@ -317,6 +343,8 @@ The addon lives in `GuildHub\`. Files are loaded in this order (see `GuildHub_Fo
 | `Features\RecruitAds.lua` | Guild Recruiter: the ad builder and the long post |
 | `Features\RecruitBuddy.lua` | Guild Recruiter: buddies and "gone quiet" |
 | `Features\Recruit.lua` | Guild Recruiter: needs, ad, posting and limits, post button, join notes |
+| `Features\Raid.lua` | Raid check: reading and sharing raid info, board rows, makeup |
+| `Features\RaidNight.lua` | Raid night: calendar answers, summon queue, ticks, Need a rez notes, "New in" card |
 | `UI\Widgets.lua` | Buttons, text boxes and the alert note |
 | `UI\Toasts.lua` | The pop-up note queue: quiet rules, pause and the counts on tabs |
 | `UI\MainFrame.lua` | The window, its tabs, the gear button and the minimap button |
@@ -332,6 +360,8 @@ The addon lives in `GuildHub\`. Files are loaded in this order (see `GuildHub_Fo
 | `UI\MapPins.lua` | Dots on the world map and minimap |
 | `UI\NameMenu.lua` | The right-click name menu |
 | `UI\MapTab.lua` | The Map tab ("Who is where") |
+| `UI\Table.lua` | Sortable tables |
+| `UI\BoardsTab.lua` | The Boards tab (Raid board) |
 | `Options.lua` | Settings (the Settings page in the window and the Options page) |
 | `ApiTest.lua` | The `/ghub test api` check |
 | `SelfTest.lua` | The `/ghub selftest` check |

@@ -543,6 +543,85 @@ Check("n6", function()
 	end
 	return s .. "," .. Exists(CanGuildPromote) .. Exists(CanGuildDemote) .. Exists(CanGuildRemove)
 end)
+
+------------------------------------------------------------------------
+-- 1.0.1 probes (plans\next-batch-1.0.x PLAN.md sec. 5; tos-check.md: read-only; calx only type()s the
+-- acting calendar functions; rraid never prints a zone or a name)
+------------------------------------------------------------------------
+-- lockx: saved instances "n" then per entry: our raid y/n, reset plain/secret, killed/bosses, 14th return y/n
+Check("lockx", function()
+	local okN, n = Call(GetNumSavedInstances)
+	if okN ~= true then return okN end
+	if type(n) ~= "number" then return "?" end
+	local parts = { tostring(n) }
+	for i = 1, math.min(n, 4) do
+		local r = { pcall(GetSavedInstanceInfo, i) }
+		if not r[1] then parts[#parts + 1] = "!"
+		else
+			local name, reset, numEnc, prog, inst = r[2], r[4], r[12], r[13], r[15]
+			local ours = not Secret(name) and GH.RAID_BY_NAME and GH.RAID_BY_NAME[name] and "y" or "n"
+			local rs = Secret(reset) and "s" or (type(reset) == "number" and "p" or "-")
+			local kp = (type(prog) == "number" and not Secret(prog) and prog or "?") .. "/" .. (type(numEnc) == "number" and not Secret(numEnc) and numEnc or "?")
+			parts[#parts + 1] = ours .. rs .. kp .. (inst ~= nil and "i" or "")
+		end
+	end
+	return table.concat(parts, ",")
+end)
+-- attune: the Onyxia chain for our faction: last step done / steps
+Check("attune", function()
+	local done = C_QuestLog and C_QuestLog.IsQuestFlaggedCompleted
+	if type(done) ~= "function" then return "-" end
+	local at = GH.OwnAttune and GH:OwnAttune()
+	if not at then return "?" end
+	local fac, step = at:match("^(%a)(%d+)$")
+	return (fac or "?") .. (step or "?") .. "/" .. tostring(GH.ATTUNE and fac and #GH.ATTUNE[fac] or "?")
+end)
+-- dura: lowest durability % (10 % steps) and whether any slot answered secret
+Check("dura", function()
+	if type(GetInventoryItemDurability) ~= "function" then return "-" end
+	local secret = false
+	for slot = 1, 18 do
+		local ok, cur, max = pcall(GetInventoryItemDurability, slot)
+		if ok and (Secret(cur) or Secret(max)) then secret = true end
+	end
+	local d = GH.OwnDurability and GH:OwnDurability()
+	return tostring(d or "?") .. (secret and ",s" or "")
+end)
+-- reag: class token, the class reagent's count (or "none"), item name loaded y/n
+Check("reag", function()
+	local ok, _, token = Call(UnitClass, "player")
+	if ok ~= true then return ok end
+	local id = GH.REAGENTS and GH.REAGENTS[token or ""]
+	if not id then return tostring(token) .. ",none" end
+	local n = GH.OwnReagents and GH:OwnReagents()
+	local okN, name = Call(C_Item and C_Item.GetItemNameByID, id)
+	return ("%s,%d=%s,%s"):format(tostring(token), id, tostring(n or "?"), okN == true and yn(type(name) == "string") or okN)
+end)
+-- calx: the next guild event's numbers only (calendarType, inviteType, inviteStatus; never the title)
+-- and whether the answer functions exist (type() only: none of them is called here)
+Check("calx", function()
+	local C = C_Calendar
+	local fns = Has(C, "OpenEvent") .. Has(C, "ContextMenuSelectEvent") .. Has(C, "ContextMenuEventSignUp")
+		.. Has(C, "ContextMenuInviteAvailable") .. Has(C, "ContextMenuInviteTentative") .. Has(C, "ContextMenuInviteDecline")
+		.. Has(C, "EventGetInvite") .. Has(C, "CloseEvent")
+	local ev = GH.FindTonightEvent and select(1, GH:FindTonightEvent())
+	if not ev then return fns .. ",none" end
+	return ("%s,%s/%s/%s"):format(fns, tostring(ev.calendarType), tostring(ev.inviteType), tostring(ev.inviteStatus))
+end)
+-- rraid: in a raid, GetRaidRosterInfo(1)'s zone: plain / secret / nil (never printed)
+Check("rraid", function()
+	if not (IsInRaid and IsInRaid()) then return "n" end
+	local r = { pcall(GetRaidRosterInfo, 1) }
+	if not r[1] then return "!" end
+	local zone = r[8]
+	return Secret(zone) and "secret" or (type(zone) == "string" and "plain" or "nil")
+end)
+-- rez: the alive events are valid and UnitIsDeadOrGhost answers plainly
+Check("rez", function()
+	local okD, dead = Call(UnitIsDeadOrGhost, "player")
+	local d = okD == true and (type(dead) == "boolean" and "p" or "?") or okD
+	return Valid("PLAYER_ALIVE") .. Valid("PLAYER_UNGHOST") .. "," .. d
+end)
 GH.API_CHECKS = checks
 
 -- Guild calendar events in the next 14 days (after OpenCalendar has loaded the data).

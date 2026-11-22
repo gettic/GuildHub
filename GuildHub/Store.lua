@@ -167,6 +167,10 @@ function GH:RepairSaved()
 	end
 	-- own characters (Alts.lua): local only, damaged entries dropped, good ones kept
 	if GH.CleanAccountData and GH.CleanAccountData(g) then fixed[#fixed + 1] = "account" end
+	-- 1.0.1 raid keys (Features\Raid.lua): a broken value goes back to "not set"; good ones are kept
+	if self.RepairRaidSaved then
+		for _, name in ipairs(self:RepairRaidSaved(db)) do fixed[#fixed + 1] = name end
+	end
 	for _, name in ipairs(fixed) do
 		self:Debug("repaired saved setting %s", name)
 	end

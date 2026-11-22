@@ -164,9 +164,50 @@ local function AddShareOptions(args)
 	}
 end
 
+-- 1.0.1 Raid section (Features\Raid.lua, Features\RaidNight.lua): own role(s), the per-field switches of
+-- Raid info (tos: opt-out per field), Rez available (healing classes) and the "New in" card.
+local RAID_FIELD_NAMES = { at = "OPT_RAID_F_AT", lk = "OPT_RAID_F_LK", rs = "OPT_RAID_F_RS", du = "OPT_RAID_F_DU", rg = "OPT_RAID_F_RG" }
+local function AddRaidOptions(args)
+	if not GH.features.raid then return end
+	local off = function() return not GH:FeatureOn("raid") end
+	args.raidHeader = { type = "header", order = 19.56, name = L.OPT_RAID_HDR }
+	args.raidRole = {
+		type = "multiselect", order = 19.561, width = "full",
+		name = L.OPT_RAID_ROLE, desc = L.OPT_RAID_ROLE_DESC,
+		values = { t = L.ROLE_T, h = L.ROLE_H, d = L.ROLE_D },
+		get = function(_, k) return (GH:OwnRole() or ""):find(k, 1, true) ~= nil end,
+		set = function(_, k) GH:ToggleRole(k) end,
+		disabled = off,
+	}
+	for i, f in ipairs(GH.RAID_FIELDS) do
+		args["raidField_" .. f] = {
+			type = "toggle", order = 19.562 + i * 0.0001, width = "full",
+			name = L[RAID_FIELD_NAMES[f]] or f, desc = L.OPT_RAID_FIELD_DESC,
+			get = function() return GH:RaidFieldShared(f) end,
+			set = function(_, v) GH:SetRaidField(f, v) end,
+			disabled = function() return off() or not GH:SharesRaid() end,
+		}
+	end
+	args.raidRez = {
+		type = "toggle", order = 19.563, width = "full",
+		name = L.TICK_REZ, desc = L.TICK_REZ_TIP,
+		get = function() return GH:RezAvailable() end,
+		set = function(_, v) GH.db.char.rezAvail = v and GH:CanRez() or nil end,
+		disabled = off,
+		hidden = function() return not GH:CanRez() end,
+	}
+	args.raidNewIn = {
+		type = "toggle", order = 19.564, width = "full",
+		name = L.OPT_NEWIN, desc = L.OPT_NEWIN_DESC,
+		get = function() return GH.db.profile.newInCard ~= false end,
+		set = function(_, v) GH.db.profile.newInCard = v and true or false end,
+	}
+end
+
 local function BuildOptions()
 	local t = BuildOptionsBase()
 	AddShareOptions(t.args)
+	AddRaidOptions(t.args)
 	AddFeatureOptions(t.args)
 	return t
 end

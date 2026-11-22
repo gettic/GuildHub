@@ -170,7 +170,7 @@ function GH:AddHoverCard(name, p)
 	local m = gdb and gdb.members[name]
 	local s = m and m.status
 	if s and self:IsStatusFresh(s) then
-		local line = self:StatusLine(s, true, self:IsMuted(name))
+		local line = self:StatusLine(s, true, self:IsMuted(name), nil, zone)
 		if line and line ~= "" then GameTooltip:AddLine(line, 1, 0.82, 0, true) end
 	end
 	-- group size: only what they share, and only for someone who shares their own (fair trade)

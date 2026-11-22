@@ -956,6 +956,91 @@ local function NextMembers()
     Finish()
 end
 
+-- 1.0.1: the Boards tab (full mode): every Raid view, the locked note, Tonight's buttons; sort toggled
+-- and put back. Then the Recruiting tab. No calendar read happens here (tos: only on a real open / Refresh).
+function ST.BoardsParts()
+    local t = GH.boardsTab or {}
+    local view = GH.db.profile.raidView
+    local parts = {
+        { name = "brd.side", obj = t.side },
+        { name = "brd.side.raid", obj = t.side and t.side.buttons and t.side.buttons.raid },
+        { name = "brd.view", obj = t.view },
+        { name = "brd.footer", obj = t.footer, opt = true, shownOnly = true },
+        { name = "brd.locked", obj = t.locked, opt = true, shownOnly = true },
+        { name = "brd.logStrip", obj = t.logStrip, opt = true, shownOnly = true },
+    }
+    if view == "tonight" then
+        local f = t.tonight or {}
+        parts[#parts + 1] = { name = "tn.card", obj = f.card }
+        parts[#parts + 1] = { name = "tn.yes", obj = f.yes }
+        parts[#parts + 1] = { name = "tn.maybe", obj = f.maybe }
+        parts[#parts + 1] = { name = "tn.no", obj = f.no }
+        parts[#parts + 1] = { name = "tn.counts", obj = f.counts }
+        parts[#parts + 1] = { name = "tn.queueHead", obj = f.queue and f.queue.head }
+        parts[#parts + 1] = { name = "tn.summon", obj = f.tSummon }
+        parts[#parts + 1] = { name = "tn.refresh", obj = t.refresh }
+    elseif t.table and t.table.frame:IsShown() then
+        parts[#parts + 1] = { name = "brd.head", obj = t.table.head }
+        parts[#parts + 1] = { name = "brd.head1", obj = t.table.headButtons[1] }
+        parts[#parts + 1] = { name = "brd.list", obj = t.table.scrollBox or t.table.area }
+    end
+    return parts
+end
+
+local BOARD_STEPS = { "ready", "lockouts", "resist", "makeup", "tonight" }
+local function StepBoards()
+    local t = GH.boardsTab
+    local i = run.state.boardStep or 1
+    local view = BOARD_STEPS[i]
+    CheckGroup(ST.BoardsParts(), Win())
+    Count()
+    if t and view == "tonight" and not GH.tonight.event then
+        -- no event: all three answer buttons greyed, with a reason
+        for _, k in ipairs({ "yes", "maybe", "no" }) do
+            local b = t.tonight[k]
+            if b and b:IsEnabled() then Problem("BRD", "tn." .. k, "clickable without an event") end
+        end
+        if (t.tonight.why:GetText() or "") == "" then Problem("BRD", "tn.why", "no reason shown") end
+    end
+    if t and view == "ready" and t.table.frame:IsShown() then
+        -- sort toggled twice on the first header and put back
+        Count()
+        local saved = GH.db.profile.raidSort
+        local before = type(saved) == "table" and { key = saved.key, rev = saved.rev } or nil
+        local b = t.table.headButtons[1]
+        if b and b.col and b.col.sort then
+            local click = b:GetScript("OnClick") -- the header's own handler, twice (sort, then reverse)
+            if click then click(b, "LeftButton"); click(b, "LeftButton") end
+            if t.table.sortKey ~= b.col.key or not t.table.sortRev then Problem("BRD", "sort", "header click didn't sort / reverse") end
+        end
+        GH.db.profile.raidSort = before or { key = "durability" }
+    end
+    i = i + 1
+    run.state.boardStep = i
+    if BOARD_STEPS[i] then
+        GH.db.profile.raidView = BOARD_STEPS[i]
+        GH:DrawBoardsTab()
+        return Later(1, StepBoards)
+    end
+    GH.db.profile.raidView = run.state.prevRaidView or "ready"
+    GH:DrawBoardsTab()
+    NextMembers()
+end
+
+local function NextBoards()
+    if run.mode == "full" and not run.state.boardsDone and GH:FeatureOn("raid") and GH.mainFrame.tabs.boards then
+        run.state.boardsDone = true
+        run.state.prevTab = run.state.prevTab or GH.mainFrame.currentTab
+        run.state.prevRaidView = GH.db.profile.raidView
+        run.state.boardStep = 1
+        GH:ShowTab("boards")
+        GH.db.profile.raidView = BOARD_STEPS[1]
+        GH:DrawBoardsTab()
+        return Later(2, StepBoards)
+    end
+    NextMembers()
+end
+
 -- 0.6.0-beta.3: the Map tab (full mode). Opening it must not add to the taint counter.
 local function StepMap()
     CheckGroup(ST.MapParts(), Win())
@@ -964,7 +1049,7 @@ local function StepMap()
     local before = run.state.taintBefore or 0
     local now = GH.actionBlocked and GH.actionBlocked.n or 0
     if now > before then Problem("TAINT", "maptab", (now - before) .. " blocked action(s) after the Map tab") end
-    NextMembers()
+    NextBoards()
 end
 
 local function NextMap()
@@ -974,7 +1059,7 @@ local function NextMap()
         GH:ShowTab("map")
         return Later(2, StepMap)
     end
-    NextMembers()
+    NextBoards()
 end
 
 local function StepProf()

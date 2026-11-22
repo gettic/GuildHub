@@ -877,7 +877,7 @@ function GH:UpdateOwnPanel(resetNote)
 			Place(panel, b, PANEL_X + col * 104, y - row * 26)
 			b:SetActive(p == pk)
 		end
-		y = y - 3 * 26 - 4
+		y = y - math.ceil(#self.PRESETS / 2) * 26 - 4
 	end
 
 	-- Dungeon (LFG only)
@@ -947,10 +947,17 @@ function GH:UpdateOwnPanel(resetNote)
 	tab.clear:SetShown(fresh or hasTick)
 	y = y - 30
 
-	-- ticks from features (myStatus hook): { key, text, get, set, why }
+	-- ticks from features (myStatus hook): { key, text, get, set, why, shown (1.0.1: optional; false =
+	-- not now, unless the tick is on, so the panel never overflows) }
 	local n = 0
 	for _, e in ipairs(self:Hooks("myStatus")) do
-		if type(e.text) == "string" and type(e.get) == "function" and type(e.set) == "function" then
+		local visible = true
+		if type(e.shown) == "function" then
+			local okS, sh = pcall(e.shown, self)
+			local okG, on = pcall(e.get, self)
+			visible = (okS and sh) or (okG and on) or false
+		end
+		if visible and type(e.text) == "string" and type(e.get) == "function" and type(e.set) == "function" then
 			n = n + 1
 			local cb = tab.ticks[n]
 			if not cb then

@@ -26,7 +26,9 @@ GH.STATUS_HOURS = { 1, 2, 4, 8 }
 local HOURS_OK = { [1] = true, [2] = true, [4] = true, [8] = true }
 GH.NOTE_LETTERS = 60
 
-GH.PRESETS = { "lfg", "help", "farm", "lvl", "busy", "chat" }
+-- 1.0.1: "rez" (Need a rez) appended: preset names are sent, older clients drop the unknown one.
+GH.PRESETS = { "lfg", "help", "farm", "lvl", "busy", "chat", "rez" }
+GH.REZ_SECONDS = 600 -- Need a rez clears itself after 10 min (and when alive again: Features\RaidNight.lua)
 local PRESET_OK = {}
 for _, p in ipairs(GH.PRESETS) do PRESET_OK[p] = true end
 local ACT_OK = { afk = true, dng = true, raid = true, pvp = true, gath = true, fish = true, quest = true, lvl = true, town = true, inn = true }
@@ -188,6 +190,7 @@ end
 
 -- How long a status lasts (its own h field; anything unknown counts as 1 hour).
 function GH:StatusDuration(s)
+	if type(s) == "table" and s.p == "rez" then return GH.REZ_SECONDS end
 	local h = type(s) == "table" and s.h
 	return (HOURS_OK[h] and h or 1) * 3600
 end
@@ -466,6 +469,11 @@ function GH:SetPreset(p)
 	if not own then return end
 	local fresh = self:IsStatusFresh(own)
 	if own.p == p and fresh then p = nil end
+	-- Need a rez: only while dead or a ghost (it clears itself when alive again)
+	if p == "rez" and not (self.PlayerDead and self:PlayerDead()) then
+		self:Msg(L.REZ_NOT_DEAD)
+		return
+	end
 	local now = U.Now()
 	if not fresh then own.t = nil end -- an old note doesn't come back
 	-- switching to another preset or turning it off clears the old note;
@@ -477,7 +485,7 @@ function GH:SetPreset(p)
 	own.p = p
 	if p == "lfg" then own.d = own.d or 0 else own.d = nil end
 	self:StampStatus(own, p ~= nil) -- a newly picked preset starts at 1 h
-	own.pt = (p == "lfg" or p == "help") and now or nil
+	own.pt = (p == "lfg" or p == "help" or p == "rez") and now or nil
 	StampTs(own)
 	self:SendStatus()
 	self:RefreshBoard()
@@ -628,6 +636,10 @@ end
 ------------------------------------------------------------------------
 function GH:MaybeAlert(sender, st, prevP, level)
 	local p = st.p
+	if p == "rez" then
+		if p ~= prevP and self.MaybeRezAlert then self:MaybeRezAlert(sender, st) end -- Features\RaidNight.lua
+		return
+	end
 	if (p ~= "lfg" and p ~= "help") or p == prevP or not self:IsStatusFresh(st) then return end
 	local al = self.db.profile.alerts
 	if (p == "lfg" and not al.lfg) or (p == "help" and not al.help) then return end
@@ -1060,7 +1072,7 @@ GH.GROUP_ORDER, GH.GROUP_COLOR = GROUP_ORDER, GROUP_COLOR
 local function GroupOf(s, fresh)
 	local p = fresh and s.p
 	if p == "lfg" then return "lfg" end
-	if p == "help" then return "help" end
+	if p == "help" or p == "rez" then return "help" end
 	local a = s.a
 	if a == "dng" or a == "raid" or a == "pvp" then return "dungeon" end
 	if p == "busy" or a == "afk" then return "busy" end
@@ -1069,14 +1081,18 @@ local function GroupOf(s, fresh)
 	return "other"
 end
 
-function GH:StatusLine(s, fresh, muted, instShort)
+function GH:StatusLine(s, fresh, muted, instShort, zone)
 	-- preset (+ dungeon) first, then the note: "LFG Scarlet Monastery: need tank", "Busy: back in 10";
 	-- with neither, the activity, plus the instance short name: "In a dungeon: RFC"
+	-- 1.0.1: "Need a rez · Hyjal Summit" (zone = the guild list's zone, when the caller has one)
 	local text
 	if fresh then
 		local head
 		if s.p == "lfg" then
 			head = (s.d and s.d > 0) and (L.PRESET.lfg .. " " .. self:DungeonName(s.d)) or L.PRESET.lfg
+		elseif s.p == "rez" then
+			local z = type(zone) == "string" and not U.IsSecret(zone) and zone ~= "" and U.CleanText(zone, 40)
+			head = z and (L.PRESET.rez .. " · " .. z) or L.PRESET.rez
 		elseif s.p then
 			head = L.PRESET[s.p]
 		end
@@ -1130,7 +1146,7 @@ function GH:BuildStatusRows(opts)
 				row.muted = self:IsMuted(name)
 				row.group = GroupOf(s, fresh)
 				row.instShort, row.instFull = self:InstanceLabel(s, row.zone, row.isSelf)
-				row.status = self:StatusLine(s, fresh, row.muted, row.instShort)
+				row.status = self:StatusLine(s, fresh, row.muted, row.instShort, row.zone)
 				row.preset = fresh and s.p or nil
 				row.act = s.a
 				if fresh and s.st then row.left = math.max(0, self:StatusDuration(s) - (now - s.st)) end

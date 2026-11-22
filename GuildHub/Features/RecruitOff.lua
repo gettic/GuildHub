@@ -736,7 +736,9 @@ function GH:RecruitMenu(root, ctx)
 	local off = self:RecruitOff(true)
 	local inPros = off and off.pros[n] ~= nil
 	local inDni = off and off.dni[n] ~= nil
-	local canEdit = CanOfficerChat() and nil or L.OFF_NO_OCHAT_SHORT
+	-- nil = may edit; the reason text otherwise (`x and nil or y` would always give y)
+	local canEdit = nil
+	if not CanOfficerChat() then canEdit = L.OFF_NO_OCHAT_SHORT end
 	local p
 	if inPros then
 		p = root:CreateButton(L.MENU_PROS_REMOVE, function() GH:RemoveProspect(n) end)

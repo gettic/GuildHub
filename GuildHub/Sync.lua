@@ -26,6 +26,7 @@ function GH:SendHello()
 	local info = self:SelfInfo()
 	info.since = gdb.lastOnline or 0
 	self:SendMsg("HELLO", info)
+	if self.AfterSelfInfo then self:AfterSelfInfo(info, true) end -- only its hash fitted: whole REC (1.0.1)
 	if self.RecruitHelloSent then self:RecruitHelloSent() end -- ad posting waits for the guild's post times
 	gdb.lastOnline = U.Now()
 	-- tell the guild our status right away (if we have one)
@@ -56,6 +57,7 @@ GH.handlers.HELLO = function(self, sender, data, distribution, isSelf)
 	if isSelf or distribution ~= "GUILD" then return end
 	self:ReadSelfInfo(sender, data)
 	self:ResendOwnFeatOff(U.ValidTime(data.since) or 0)
+	if self.BundleOnHello then self:BundleOnHello(sender) end -- whole REC: our HB is hash-only, or they are in our group (1.0.1)
 	-- the recruiting text (online officers) and the last hour's ad post times (Features\Recruit.lua)
 	if self.RecruitOnHello then self:RecruitOnHello(sender, data) end
 
@@ -89,6 +91,18 @@ GH.handlers.SYNCING = function(self, sender, data, distribution, isSelf)
 	local asker = U.ValidName(data.n)
 	if asker then self.syncSeen[asker] = GetTime() end
 end
+
+-- The part of an offline member's bundle worth relaying: role, attunement, lockouts (durability,
+-- reagents, resistances and ticks are stale while they are away). nil if none of these.
+local RELAY_FIELDS = { "ro", "at", "lk" }
+local function RelayBundle(b)
+	local r
+	for _, k in ipairs(RELAY_FIELDS) do
+		if b[k] ~= nil then r = r or {}; r[k] = b[k] end
+	end
+	return r
+end
+GH.RelayBundle = RelayBundle
 
 function GH:AnswerSync(asker, since)
 	local gdb = self:GetGuildDB()
@@ -132,7 +146,9 @@ function GH:AnswerSync(asker, since)
 			part[name] = { ts = m.ts, class = m.class, level = m.level, version = m.version, lastSeen = m.lastSeen,
 				status = statuses[name], -- older clients drop "status", "prof" and "b" (CleanRecord ignores unknown fields)
 				prof = (self.ProfSyncPayload and self:FeatureOn("prof")) and self:ProfSyncPayload(name, m) or nil,
-				b = type(m.b) == "table" and m.b or nil }
+				-- 1.0.1: raid info only for members who are offline (online ones send their own: HB, or a
+				-- whole REC to their group on HELLO), trimmed to the fields that stay true while away
+				b = (type(m.b) == "table" and not self:IsOnline(name)) and RelayBundle(m.b) or nil }
 		end
 		self:SendMsg("SYNC", { b = b, of = batches, m = part, cfg = (b == 1) and cfg or nil,
 			fo = (b == 1) and fo or nil,
@@ -204,7 +220,7 @@ GH.handlers.SYNC = function(self, sender, data, distribution, isSelf)
 				self:MergeProf(name, rec.prof, sender) -- summaries; lists come later from the sender
 			end
 			if name and type(rec) == "table" and type(rec.b) == "table" and name ~= self:MyName() then
-				self:ReadBundle(name, rec.b, true) -- the bundle record (Features.lua)
+				self:ReadBundle(name, rec.b, true, true) -- the bundle record (Features.lua), relayed
 			end
 		end
 	end

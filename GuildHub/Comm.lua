@@ -455,7 +455,9 @@ function GH:SendHeartbeat()
 	if not self.started then return end
 	local gdb = self:GetGuildDB()
 	if gdb then gdb.lastOnline = U.Now() end
-	self:SendMsg("HB", self:SelfInfo())
+	local info = self:SelfInfo()
+	self:SendMsg("HB", info)
+	if self.AfterSelfInfo then self:AfterSelfInfo(info, false) end -- only its hash fitted: whole REC (1.0.1)
 	-- refresh for players who missed a change (e.g. they were in a dungeon); only if there is something
 	if self:HasStatusToShare() then self:SendStatus() end
 end

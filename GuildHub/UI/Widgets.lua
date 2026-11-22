@@ -831,6 +831,8 @@ function GH:ShowToast(sender, text, e)
 	end
 	t.sender = sender
 	t.kind = e and e.kind
+	-- 1.0.1: the title follows the kind ("Need a rez"); a plain FontString, no secure button anywhere
+	t.title:SetText((e and type(e.title) == "string" and e.title) or L.TOAST_TITLE)
 	t.text:SetText(text) -- already cleaned (no colour, link or texture codes)
 	local person = sender ~= nil and t.kind ~= "test"
 	local help = person and t.kind == "help"

@@ -337,15 +337,34 @@ local function BundleFields()
 end
 GH.BundleFields = BundleFields
 
--- Our own whole bundle (nil if empty).
+-- Our own whole bundle (nil if empty). 1.0.1: if it is too big, the fields with the lowest `prio`
+-- are left out one by one until it fits (fields without prio are kept longest), instead of sending
+-- nothing at all. GH.bundleDropped = the fields left out last time (self-test).
 function GH:OwnBundle()
 	local b, any = {}, false
-	for field, def in pairs(BundleFields()) do
+	local defs = BundleFields()
+	for field, def in pairs(defs) do
 		local ok, v = pcall(def.get)
 		if ok and v ~= nil then b[field] = v; any = true end
 	end
+	self.bundleDropped = nil
 	if not any then return nil end
-	if #self:Serialize(b) > self.BUNDLE_MAX then return nil end
+	if #self:Serialize(b) <= self.BUNDLE_MAX then return b end
+	local order = {}
+	for field in pairs(b) do order[#order + 1] = field end
+	table.sort(order, function(x, y)
+		local px, py = tonumber(defs[x].prio) or 99, tonumber(defs[y].prio) or 99
+		if px ~= py then return px < py end
+		return x < y
+	end)
+	local dropped = {}
+	for _, field in ipairs(order) do
+		b[field] = nil
+		dropped[#dropped + 1] = field
+		if next(b) == nil then self.bundleDropped = dropped; return nil end
+		if #self:Serialize(b) <= self.BUNDLE_MAX then break end
+	end
+	self.bundleDropped = dropped
 	return b
 end
 
@@ -359,24 +378,75 @@ function GH:BundleChanged(field)
 	if not BundleFields()[field] then return end
 	self.bundleDirty[field] = true
 	local own = self:OwnBundle() or {}
+	if self.bundleWholePending and next(own) then
+		-- a whole REC is still waiting: this one replaces it (latest), so it must be whole too
+		self:SendMsg("REC", { f = own, h = self:BundleHash(own), w = 1 })
+		return
+	end
 	local f = {}
-	for k in pairs(self.bundleDirty) do f[k] = own[k] == nil and false or own[k] end
+	for k in pairs(self.bundleDirty) do
+		-- false = "drop this field" (`own[k] == nil and false or own[k]` would give nil and send nothing)
+		if own[k] == nil then f[k] = false else f[k] = own[k] end
+	end
 	self:SendMsg("REC", { f = f, h = self:BundleHash(own) })
 end
 
 -- Comm.lua: REC really went out.
 function GH:OnRecSent()
 	self.bundleDirty = {}
+	self.bundleWholePending = nil
+end
+
+-- 1.0.1: HELLO / HB had no room for the whole bundle and carried only its hash (bh), which nobody can
+-- use. Then the whole bundle follows as one REC with w = 1 ("replace, don't merge"): after our HELLO,
+-- and after an HB whose hash changed since the last whole one. REC is paced (30 s, latest wins), so
+-- this adds at most one REC. Older clients read w = 1 as a normal REC (they merge the fields).
+function GH:AfterSelfInfo(info, hello)
+	if type(info) ~= "table" then return end
+	self.bundleHashOnly = info.bh ~= nil -- remembered for BundleOnHello
+	if not info.bh then return end
+	if not hello and info.bh == self.bundleWholeHash then return end
+	local own = self:OwnBundle()
+	if not own then return end
+	self.bundleWholeHash = info.bh
+	self.bundleWholePending = true
+	self:SendMsg("REC", { f = own, h = info.bh, w = 1 })
+end
+
+-- Someone else logged in (HELLO, Sync.lua). Nobody's SYNC carries the bundles of online members (1.0.1),
+-- and ours never carries our own. So we send our whole REC when our HB has room only for the hash, or
+-- when they are in our group (a raider who relogs gets the raid's info at once; others get it with our
+-- next HB). Paced like every REC (30 s, latest wins): at most one REC per 30 s.
+function GH:BundleOnHello(sender)
+	local inGroup = sender and self.MapInMyGroup and self:MapInMyGroup(sender)
+	if not self.bundleHashOnly and not inGroup then return end
+	local own = self:OwnBundle()
+	if not own then return end
+	local h = self:BundleHash(own)
+	self.bundleWholeHash = h
+	self.bundleWholePending = true
+	self:SendMsg("REC", { f = own, h = h, w = 1 })
 end
 
 -- Received fields: unknown ones ignored, each cleaned, size capped. Stored in members[name].b.
-function GH:ReadBundle(name, fields, whole)
+-- relayed = a copy from someone else's SYNC (the owner's own REC / HB / HELLO is "direct").
+-- 1.0.1: direct data may create the member entry (the REC that answers our HELLO can arrive before
+-- the SYNC that creates it), and a relayed copy never replaces what the owner sent us this session
+-- (it may be older; session memory only, nothing saved).
+GH.bundleDirect = {}
+function GH:ReadBundle(name, fields, whole, relayed)
 	if type(fields) ~= "table" then return end
+	if relayed and self.bundleDirect[name] then return end
 	local gdb = self:GetGuildDB()
 	local m = gdb and gdb.members[name]
+	if not m and not relayed and gdb and self:IsGuildMember(name) and name ~= self:MyName() then
+		m = { ts = 0, lastSeen = U.Now() } -- the same shape MergeStatus makes; SYNC fills in the rest
+		gdb.members[name] = m
+	end
 	if not m then return end
 	local ok, ser = pcall(self.Serialize, self, fields)
 	if not ok or #ser > self.BUNDLE_MAX then return end
+	if not relayed then self.bundleDirect[name] = true end
 	local defs = BundleFields()
 	local b = whole and {} or (type(m.b) == "table" and m.b or {})
 	for field, v in pairs(fields) do
@@ -392,5 +462,6 @@ end
 
 GH.handlers.REC = function(self, sender, data, distribution, isSelf)
 	if isSelf or distribution ~= "GUILD" then return end
-	self:ReadBundle(sender, data.f, false)
+	if type(data) ~= "table" then return end
+	self:ReadBundle(sender, data.f, data.w == 1)
 end
